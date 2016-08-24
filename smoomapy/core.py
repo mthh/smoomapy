@@ -7,17 +7,18 @@ Allow to set a desired number of class or directly some custom breaks values.
 @author: mthh
 """
 import numpy as np
-from matplotlib.mlab import griddata
+import scipy.interpolate
+#from matplotlib.mlab import griddata
 from matplotlib.pyplot import contourf
 from shapely.geometry import Polygon, MultiPolygon
 from shapely.ops import unary_union
 from geopandas import GeoDataFrame
-
+import time
 
 def quick_stewart(input_geojson_points, variable_name, span,
-                 beta=2, typefct='exponential',
-                 nb_class=None, resolution=None, mask=None,
-                 user_defined_breaks=None, output="GeoJSON"):
+                  beta=2, typefct='exponential',
+                  nb_class=None, resolution=None, mask=None,
+                  user_defined_breaks=None, output="GeoJSON"):
     """
     Main function, read a file of point values and optionnaly a mask file,
     return the smoothed representation as GeoJSON.
@@ -68,8 +69,8 @@ def quick_stewart(input_geojson_points, variable_name, span,
                                    span=12500, beta=3, typefct="pareto",
                                    output="GeoDataFrame")
     """
-    gdf = GeoDataFrame.from_file(input_geojson_points).to_crs(crs="+proj=natearth")
-
+    gdf = GeoDataFrame.from_file(
+        input_geojson_points).to_crs(crs="+proj=natearth")
 
     if mask:
         mask = GeoDataFrame.from_file(mask).to_crs(crs="+proj=natearth") \
@@ -92,7 +93,7 @@ def quick_stewart(input_geojson_points, variable_name, span,
                                      resolution=resolution,
                                      typefct='exponential',
                                      mask=mask if use_mask else None)
-
+    print(len(pot), len(unknownpts), "\tshape: ", shape)
     result = render_stewart(
         pot, unknownpts, nb_class if nb_class else 8, mask, shape,
         user_defined_breaks)
@@ -266,10 +267,12 @@ def render_stewart(pot, unknownpts, nb_class=8, mask=None, shape=None,
                    user_defined_breaks=None):
     x = np.array([c[0] for c in unknownpts])
     y = np.array([c[1] for c in unknownpts])
-    xi = np.linspace(np.nanmin(x), np.nanmax(x), shape[0])
-    yi = np.linspace(np.nanmin(y), np.nanmax(y), shape[1])
-    zi = griddata(x, y, pot, xi, yi, interp='linear').round(8)
-
+    xi = np.linspace(np.nanmin(x), np.nanmax(x), shape[0] if shape[0] > 110 else 110)
+    yi = np.linspace(np.nanmin(y), np.nanmax(y), shape[1] if shape[0] > 110 else 110)
+#    zi = griddata(x, y, pot, xi, yi, interp='linear').round(8)
+    s_t = time.time()
+    zi = scipy.interpolate.griddata((x,y), pot, (xi[None,:], yi[:,None]), method='cubic')
+    print("griddata: ", time.time()-s_t)
 #    levels = np.percentile(zi, np.linspace(0.0,100.0,nb_class+1))
 #    if nb_class > 15:
 #        q = np.concatenate((np.linspace(0.0,96.0,nb_class-1), [98.5,100.0]))
