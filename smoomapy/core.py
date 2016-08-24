@@ -17,12 +17,12 @@ from geopandas import GeoDataFrame
 def quick_stewart(input_geojson_points, variable_name, span,
                  beta=2, typefct='exponential',
                  nb_class=None, resolution=None, mask=None,
-                 user_defined_breaks=None):
+                 user_defined_breaks=None, output="GeoJSON"):
     """
     Main function, read a file of point values and optionnaly a mask file,
     return the smoothed representation as GeoJSON.
 
-    Parameter:
+    Parameters
     ----------
     input_geojson_points: str
         Path to file to use as input (Points/Polygons), must contains
@@ -45,15 +45,34 @@ def quick_stewart(input_geojson_points, variable_name, span,
     user_defined_breaks: list or tuple, default None
         A list of ordered break to use to construct the contours
         (override `nb_class` value if any)
-    Return:
+    output: string, optionnal
+        The type of output expected (not case-sensitive) in {"GeoJSON", "GeoDataFrame"}
+        (default: "GeoJSON")
+
+    Returns
     -------
     smoothed_geojson: bytes,
         The result dumped as GeoJSON (utf-8 encoded)
+
+
+    Examples
+    --------
+    Basic usage, output to raw geojson (bytes):
+
+    >>> result = quick_stewart("some_file.geojson", "some_variable",
+                               span=12500, beta=3, typefct="exponential")
+
+    Mote options, returning a GeoDataFrame:
+
+    >>> smooth_gdf = quick_stewart("some_file.geojson", "some_variable",
+                                   span=12500, beta=3, typefct="pareto",
+                                   output="GeoDataFrame")
     """
     gdf = GeoDataFrame.from_file(input_geojson_points)
 
     if mask:
-        mask = GeoDataFrame.from_file(mask) if mask != input_geojson_points else gdf
+        mask = GeoDataFrame.from_file(mask) \
+                if mask != input_geojson_points else gdf
 
         if len(set(gdf.type).intersection({"Polygon", "MultiPolygon"})) > 0 \
                 and gdf.crs == mask.crs:
@@ -75,13 +94,29 @@ def quick_stewart(input_geojson_points, variable_name, span,
         pot, unknownpts, nb_class if nb_class else 8, mask, shape,
         user_defined_breaks)
     result.crs = gdf.crs
-    return result.to_json().encode()
+    return result.to_crs({'init': 'epsg:4326'}).to_json().encode() \
+        if "geojson" in output.lower() \
+        else result.to_crs({'init': 'epsg:4326'})
 
 
-def make_regular_points_with_no_res(bounds, nb_points=7569):
+def make_regular_points_with_no_res(bounds, nb_points=7560):
     """
     Return a regular grid of points within `bounds` with the specified
     number of points (or a close approximate value).
+
+    Parameters
+    ----------
+    bounds: 4-floats tuple
+        The bbox of the grid, as xmin, ymin, xmax, ymax.
+    nb_points: int, optionnal
+        The desired number of points (default: 7560)
+
+    Returns
+    -------
+    points: numpy.array
+        An array of coordinates
+    shape: 2-floats tuple
+        The number of points on each dimension (width, height)
     """
     xmin, ymin, xmax, ymax = bounds
     rows = int(nb_points**0.5)
@@ -106,12 +141,27 @@ def make_regular_points_with_no_res(bounds, nb_points=7569):
         x_left_origin = x_left_origin + width
         x_right_origin = x_right_origin + width
 
-    return (np.array(res_geoms), (rows, cols))
+    return (np.array(res_geoms), (cols, rows))
 
 
 def make_regular_points(bounds, resolution):
     """
-    Return a regular grid of points within `bounds` with the specified `resolution`.
+    Return a regular grid of points within `bounds` with the specified
+    resolution.
+
+    Parameters
+    ----------
+    bounds: 4-floats tuple
+        The bbox of the grid, as xmin, ymin, xmax, ymax.
+    resolution: int
+        The resolution to use, in the same unit as `bounds`
+
+    Returns
+    -------
+    points: numpy.array
+        An array of coordinates
+    shape: 2-floats tuple
+        The number of points on each dimension (width, height)
     """
     xmin, ymin, xmax, ymax = bounds
     nb_x = int(round((xmax - xmin) / resolution + ((xmax - xmin) / resolution) / 10))
@@ -131,6 +181,25 @@ def make_regular_points(bounds, resolution):
 
 
 def make_dist_mat(xy1, xy2, longlat=False):
+    """
+    Return a distance matrix between two set of coordinates.
+    Use geometric distance (default) or haversine distance (if longlat=True).
+
+    Parameters
+    ----------
+    xy1: numpy.array
+        The first set of coordinates as [(x, y), (x, y), (x, y)].
+    xy2: numpy.array
+        The second set of coordinates as [(x, y), (x, y), (x, y)].
+    longlat: boolean, optionnal
+        Whether the coordinates are in geographic (longitude/latitude) format
+        or not (default: False)
+
+    Returns
+    -------
+    mat_dist: numpy.array
+        The distance matrix between xy1 and xy2
+    """
     if not longlat:
         d0 = np.subtract.outer(xy1[:, 0], xy2[:, 0])
         d1 = np.subtract.outer(xy1[:, 1], xy2[:, 1])
@@ -140,13 +209,28 @@ def make_dist_mat(xy1, xy2, longlat=False):
 
 
 def hav_dist(locs1, locs2, k=np.pi/180):
-    # (lat, lon)
+    """
+    Return a distance matrix between two set of coordinates.
+    Use geometric distance (default) or haversine distance (if longlat=True).
+
+    Parameters
+    ----------
+    locs1: numpy.array
+        The first set of coordinates as [(long, lat), (long, lat)].
+    locs2: numpy.array
+        The second set of coordinates as [(long, lat), (long, lat)].
+
+    Returns
+    -------
+    mat_dist: numpy.array
+        The distance matrix between locs1 and locs2
+    """
     locs1 = locs1 * k
     locs2 = locs2 * k
-    cos_lat1 = np.cos(locs1[..., 0])
-    cos_lat2 = np.cos(locs2[..., 0])
-    cos_lat_d = np.cos(locs1[..., 0] - locs2[..., 0])
-    cos_lon_d = np.cos(locs1[..., 1] - locs2[..., 1])
+    cos_lat1 = np.cos(locs1[..., 1])
+    cos_lat2 = np.cos(locs2[..., 1])
+    cos_lat_d = np.cos(locs1[..., 1] - locs2[..., 1])
+    cos_lon_d = np.cos(locs1[..., 0] - locs2[..., 0])
     return 6367 * np.arccos(cos_lat_d - cos_lat1 * cos_lat2 * (1 - cos_lon_d))
 
 
@@ -182,16 +266,18 @@ def render_stewart(pot, unknownpts, nb_class=8, mask=None, shape=None,
     yi = np.linspace(np.nanmin(y), np.nanmax(y), shape[1])
     zi = griddata(x, y, pot, xi, yi, interp='linear').round(8)
 
-#    levels = [0] + [pot.min() + (pot.max()/i) for i in range(1, nb_class+1)][::-1]
+    levels = [0] + [pot.max()/i for i in range(1, nb_class + 1)][::-1] \
+        if not user_defined_breaks else user_defined_breaks
     collec_poly = contourf(
         xi, yi, zi,
-        nb_class if not user_defined_breaks else user_defined_breaks,
+        levels,
         vmax=abs(zi).max(), vmin=-abs(zi).max())
 
-    levels = collec_poly.levels if not user_defined_breaks else user_defined_breaks
+    levels = collec_poly.levels
     levels[-1] = np.nanmax(pot)
-    res = isopoly_to_gdf(collec_poly, levels=levels[1:])
-
+    res = isopoly_to_gdf(collec_poly, levels=levels[1:], field_name="max")
+    res["min"] = [0] + [res["max"][i-1] for i in range(1, len(res))]
+    res["center"] = res["min"] + res["max"] / 2
     if mask is not None:
         res.geometry = res.geometry.buffer(0).intersection(
                                         unary_union(mask.geometry.buffer(0)))
@@ -199,6 +285,25 @@ def render_stewart(pot, unknownpts, nb_class=8, mask=None, shape=None,
 
 
 def isopoly_to_gdf(collec_poly, levels, field_name="levels"):
+    """
+    Convert a collection of matplotlib.contour.QuadContourSet to a GeoDataFrame
+    Set an attribute `field_name` on each feature, according to `levels` values
+    (`levels` must have the same number of features as the collection of contours)
+
+    Parameters
+    ----------
+    collection_polygons: matplotlib.contour.QuadContourSet
+        The result of a grid interpolation from matplotlib.
+    levels: array-like
+        The value to use as attributes for the constructed GeoDataFrame.
+    field_name: string,
+        The name of the field to be fill by `levels` variable (default: "levels")
+
+    Returns
+    -------
+    gdf_contours: GeoDataFrame
+        The result as a GeoDataFrame.
+    """
     polygons, data = [], []
 
     for i, polygon in enumerate(collec_poly.collections):
