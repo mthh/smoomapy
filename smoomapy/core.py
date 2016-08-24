@@ -68,10 +68,11 @@ def quick_stewart(input_geojson_points, variable_name, span,
                                    span=12500, beta=3, typefct="pareto",
                                    output="GeoDataFrame")
     """
-    gdf = GeoDataFrame.from_file(input_geojson_points)
+    gdf = GeoDataFrame.from_file(input_geojson_points).to_crs(crs="+proj=natearth")
+
 
     if mask:
-        mask = GeoDataFrame.from_file(mask) \
+        mask = GeoDataFrame.from_file(mask).to_crs(crs="+proj=natearth") \
                 if mask != input_geojson_points else gdf
 
         if len(set(gdf.type).intersection({"Polygon", "MultiPolygon"})) > 0 \
@@ -81,6 +82,8 @@ def quick_stewart(input_geojson_points, variable_name, span,
             print("Warning: Mask layer have to be (Multi)Polygon geometries"
                   " and use the same CRS as input values")
             use_mask = False
+    else:
+        use_mask = False
 
     pot, unknownpts, shape = compute(gdf,
                                      variable_name,
@@ -94,6 +97,7 @@ def quick_stewart(input_geojson_points, variable_name, span,
         pot, unknownpts, nb_class if nb_class else 8, mask, shape,
         user_defined_breaks)
     result.crs = gdf.crs
+
     return result.to_crs({'init': 'epsg:4326'}).to_json().encode() \
         if "geojson" in output.lower() \
         else result.to_crs({'init': 'epsg:4326'})
@@ -266,8 +270,25 @@ def render_stewart(pot, unknownpts, nb_class=8, mask=None, shape=None,
     yi = np.linspace(np.nanmin(y), np.nanmax(y), shape[1])
     zi = griddata(x, y, pot, xi, yi, interp='linear').round(8)
 
-    levels = [0] + [pot.max()/i for i in range(1, nb_class + 1)][::-1] \
+#    levels = np.percentile(zi, np.linspace(0.0,100.0,nb_class+1))
+#    if nb_class > 15:
+#        q = np.concatenate((np.linspace(0.0,96.0,nb_class-1), [98.5,100.0]))
+#    elif nb_class > 4:
+#        q = np.concatenate(([0], np.linspace(12.5,96.0,nb_class-2), [98.5,100.0]))
+#    else:
+#        q = np.concatenate(([0], np.linspace(12.5,98,nb_class-1), [100.0]))
+#
+#    levels = np.percentile(np.concatenate((pot[pot.nonzero()], np.array([0.0]))),
+#                           q)
+
+#    levels = [0] + [pot.max()/i for i in range(1, nb_class + 1)][::-1] \
+#        if not user_defined_breaks else user_defined_breaks
+
+    levels = [0, pot.max()/(nb_class + 0.3)] \
+            + [pot.max()/i for i in range(2, nb_class-1)][::-1] \
+            + [pot.max() / 1.4, pot.max()] \
         if not user_defined_breaks else user_defined_breaks
+
     collec_poly = contourf(
         xi, yi, zi,
         levels,
