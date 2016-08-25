@@ -371,8 +371,18 @@ class SmoothStewart:
 
     def render(self, nb_class=8, disc_func=None,
                user_defined_breaks=None,
-               func_grid="scipy", output="GeoJSON"):
+               func_grid="scipy", output="GeoJSON",
+               new_mask=False):
         pot = self.pot
+
+        if new_mask == None:
+            self.use_mask = False
+            self.mask = None
+        elif new_mask:
+            self.use_mask = True
+            self.mask = GeoDataFrame.from_file(
+                new_mask).to_crs(crs="+proj=natearth")
+
         if func_grid == "scipy":
             self.zi = scipy_griddata((self.x, self.y), pot,
                                      (self.xi[None, :], self.yi[:, None]),
@@ -390,10 +400,15 @@ class SmoothStewart:
             levels = user_defined_breaks
         else:
             # Some pretty ugly try to find a way to split the serie in class:
-            if not disc_func or "equal_interval" in disc_func \
+            if not disc_func or "prog_geom" in disc_func \
                     or ("jenks" in disc_func and not jenks_breaks):
+                if not nb_class:
+                    nb_class = 8
                 levels = [0] + [
                     pot.max() / i for i in range(1, nb_class + 1)][::-1]
+            elif "equal_interval" in disc_func:
+                _bin = pot.max() / nb_class
+                levels = [0] + [_bin * i for i in range(1, nb_class+1)]
             elif "percentiles" in disc_func:
                 levels = np.percentile(
                     np.concatenate((pot[pot.nonzero()], np.array([0.0]))),
@@ -437,8 +452,8 @@ class SmoothStewart:
         res = isopoly_to_gdf(collec_poly, levels=levels[1:], field_name="max")
         res.crs = self.gdf.crs
         res["min"] = [0] + [res["max"][i-1] for i in range(1, len(res))]
-        res["center"] = res["min"] + res["max"] / 2
-        if self.mask is not None:
+        res["center"] = (res["min"] + res["max"]) / 2
+        if self.use_mask:
             res.geometry = res.geometry.buffer(
                 0).intersection(unary_union(self.mask.geometry.buffer(0)))
         return res.to_crs({'init': 'epsg:4326'}).to_json().encode() \
