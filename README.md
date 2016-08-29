@@ -1,11 +1,21 @@
 # smoomapy
 ----------
-
+**Make smoothed maps in your python environnement**
+  
+More or less a python port of *Stewart method*
+from R SpatialPositon package (https://github.com/Groupe-ElementR/SpatialPosition/)
+Allow to set a desired number of class and choose discretization method
+  or directly set some custom breaks values.
+  
 
 #### Requires:
+ - Numpy
  - GeoPandas
  - SciPy
  - Matplotlib
+
+#### Documentation on the method :
+Please refer to https://github.com/Groupe-ElementR/SpatialPosition/ documentation.
 
 #### Usage example:
 ##### One-shot functionnality
@@ -18,7 +28,7 @@
                            mask='nuts3_data.geojson',
                            nb_class=10,
                            user_defined_breaks=None,
-                           output="geodataframe")
+                           output="geojson")
 ```
 
 
@@ -32,8 +42,9 @@
                         disc_func="jenks", output="GeoDataFrame")
 ```
 
-The long part of the computation is done during the initialization of `SmoothStewart` instance (i.e. actually computing potentials)
-Some convenience methods allows to tweak and re-ewport the few last steps :
+The long part of the computation is done during the initialization of `SmoothStewart` instance
+(i.e. actually computing potentials).  
+Some convenience methods allows to tweak and re-export the few last steps :
 
 **_Allow to quickly redraw polygons with a new discretization
 (or with new interpolation functionnality)_**
@@ -44,7 +55,7 @@ Some convenience methods allows to tweak and re-ewport the few last steps :
                         disc_func="percentiles", output="GeoDataFrame")
 ```
 
-**_Allow to set custom breaks values :_**
+**_Allow to set custom break values :_**
 ```python
 >>> my_breaks = [0, 1697631, 3395263, 5092894, 6790526,
                  8488157, 10185789, 11883420, 13581052]

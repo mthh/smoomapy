@@ -1,33 +1,42 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Most likely a python port of Stewart method
+More or less a python port of Stewart method
 from R SpatialPositon package (https://github.com/Groupe-ElementR/SpatialPosition/)
-Allow to set a desired number of class or directly some custom breaks values.
+Allow to set a desired number of class and choose discretization method
+  or directly set some custom breaks values.
 
 @author: mthh
 """
 import numpy as np
-import scipy.interpolate
-#from matplotlib.mlab import griddata
+from scipy.interpolate import griddata as scipy_griddata, Rbf
+from matplotlib.mlab import griddata as mlab_griddata
 from matplotlib.pyplot import contourf
 from shapely.geometry import Polygon, MultiPolygon
 from shapely.ops import unary_union
 from geopandas import GeoDataFrame
-import time
+try:
+    from jenksPy import jenks_breaks
+except:
+    jenks_breaks = False
+from .helpers_classif import get_opt_nb_class, maximal_breaks, head_tail_breaks
+
 
 def quick_stewart(input_geojson_points, variable_name, span,
                   beta=2, typefct='exponential',
                   nb_class=None, resolution=None, mask=None,
-                  user_defined_breaks=None, output="GeoJSON"):
+                  user_defined_breaks=None, variable_name2=None,
+                  output="GeoJSON"):
     """
-    Main function, read a file of point values and optionnaly a mask file,
-    return the smoothed representation as GeoJSON.
+    Main function, acting as a one-shot wrapper around SmoothStewart object.
+    Read a file of point values and optionnaly a mask file,
+    return the smoothed representation as GeoJSON or GeoDataFrame.
 
     Parameters
     ----------
     input_geojson_points: str
-        Path to file to use as input (Points/Polygons), must contains
-        a relevant numerical field.
+        Path to file to use as input (Points/Polygons) or GeoDataFrame object,
+        must contains a relevant numerical field.
     variable_name: str
         The name of the variable to use (numerical field only).
     span: int
@@ -46,6 +55,10 @@ def quick_stewart(input_geojson_points, variable_name, span,
     user_defined_breaks: list or tuple, default None
         A list of ordered break to use to construct the contours
         (override `nb_class` value if any)
+    variable_name2: str
+        The name of the 2nd variable to use (numerical field only); values
+        computed from this variable will be will be used as to divide
+        values computed from the first variable.
     output: string, optionnal
         The type of output expected (not case-sensitive) in {"GeoJSON", "GeoDataFrame"}
         (default: "GeoJSON")
@@ -69,39 +82,11 @@ def quick_stewart(input_geojson_points, variable_name, span,
                                    span=12500, beta=3, typefct="pareto",
                                    output="GeoDataFrame")
     """
-    gdf = GeoDataFrame.from_file(
-        input_geojson_points).to_crs(crs="+proj=natearth")
-
-    if mask:
-        mask = GeoDataFrame.from_file(mask).to_crs(crs="+proj=natearth") \
-                if mask != input_geojson_points else gdf
-
-        if len(set(gdf.type).intersection({"Polygon", "MultiPolygon"})) > 0 \
-                and gdf.crs == mask.crs:
-            use_mask = True
-        else:
-            print("Warning: Mask layer have to be (Multi)Polygon geometries"
-                  " and use the same CRS as input values")
-            use_mask = False
-    else:
-        use_mask = False
-
-    pot, unknownpts, shape = compute(gdf,
-                                     variable_name,
-                                     span=span,
-                                     beta=beta,
-                                     resolution=resolution,
-                                     typefct='exponential',
-                                     mask=mask if use_mask else None)
-    print(len(pot), len(unknownpts), "\tshape: ", shape)
-    result = render_stewart(
-        pot, unknownpts, nb_class if nb_class else 8, mask, shape,
-        user_defined_breaks)
-    result.crs = gdf.crs
-
-    return result.to_crs({'init': 'epsg:4326'}).to_json().encode() \
-        if "geojson" in output.lower() \
-        else result.to_crs({'init': 'epsg:4326'})
+    StePot = SmoothStewart(input_geojson_points, variable_name, span,
+                           beta, typefct, resolution, None, mask)
+    return StePot.render(nb_class=nb_class,
+                         user_defined_breaks=user_defined_breaks,
+                         output=output)
 
 
 def make_regular_points_with_no_res(bounds, nb_points=7560):
@@ -169,18 +154,20 @@ def make_regular_points(bounds, resolution):
         The number of points on each dimension (width, height)
     """
     xmin, ymin, xmax, ymax = bounds
-    nb_x = int(round((xmax - xmin) / resolution + ((xmax - xmin) / resolution) / 10))
-    nb_y = int(round((ymax - ymin) / resolution + ((ymax - ymin) / resolution) / 10))
+    nb_x = int(round(
+        (xmax - xmin) / resolution + ((xmax - xmin) / resolution) / 10))
+    nb_y = int(round(
+        (ymax - ymin) / resolution + ((ymax - ymin) / resolution) / 10))
 
-    try:
-        prog_x = \
-            [(xmin - (xmax - xmin) / 20) + resolution * i for i in range(nb_x + 1)]
-        prog_y = \
-            [(ymin - (ymax - ymin) / 20) + resolution * i for i in range(nb_y + 1)]
-    except ZeroDivisionError:
-        raise ZeroDivisionError(
-            'Please choose a finest resolution (by lowering the value of the '
-            'resolution argument and/or providing an appropriate mask layer')
+#    try:
+    prog_x = \
+        [(xmin - (xmax - xmin) / 20) + resolution * i for i in range(nb_x + 1)]
+    prog_y = \
+        [(ymin - (ymax - ymin) / 20) + resolution * i for i in range(nb_y + 1)]
+#    except ZeroDivisionError:
+#        raise ZeroDivisionError(
+#            'Please choose a finest resolution (by lowering the value of the '
+#            'resolution argument and/or providing an appropriate mask layer')
     return (np.array([(x, y) for x in prog_x for y in prog_y]),
             (len(prog_x), len(prog_y)))
 
@@ -239,75 +226,6 @@ def hav_dist(locs1, locs2, k=np.pi/180):
     return 6367 * np.arccos(cos_lat_d - cos_lat1 * cos_lat2 * (1 - cos_lon_d))
 
 
-def compute_interact_density(matdist, typefun, beta, span):
-    if 'pareto' in typefun:
-        alpha = (2 ** (1 / beta) - 1) / span
-        matDens = (1 + alpha * matdist) ** (-beta)
-    elif 'exponential' in typefun:
-        alpha = np.log(2) / span ** beta
-        matDens = np.exp(- alpha * matdist ** beta)
-    else:
-        raise ValueError('Bad interaction function argument: {}'
-                         .format(typefun))
-    return matDens.round(8)
-
-
-#def compute_potentials(matopport):
-#    return matopport.sum(axis=0)
-#
-#def compute_opportunity(knownpts, matdens, varname):
-#    matOpport = knownpts[varname].values[:, np.newaxis] * matdens
-#    return matOpport.round(8)
-#
-#def compute_opportunity_potentials(knownpts_values, matdens):
-#    matOpport = knownpts_values[:, np.newaxis] * matdens
-#    return matOpport.sum(axis=0).round(8)
-
-def render_stewart(pot, unknownpts, nb_class=8, mask=None, shape=None,
-                   user_defined_breaks=None):
-    x = np.array([c[0] for c in unknownpts])
-    y = np.array([c[1] for c in unknownpts])
-    xi = np.linspace(np.nanmin(x), np.nanmax(x), shape[0] if shape[0] > 110 else 110)
-    yi = np.linspace(np.nanmin(y), np.nanmax(y), shape[1] if shape[0] > 110 else 110)
-#    zi = griddata(x, y, pot, xi, yi, interp='linear').round(8)
-    s_t = time.time()
-    zi = scipy.interpolate.griddata((x,y), pot, (xi[None,:], yi[:,None]), method='cubic')
-    print("griddata: ", time.time()-s_t)
-#    levels = np.percentile(zi, np.linspace(0.0,100.0,nb_class+1))
-#    if nb_class > 15:
-#        q = np.concatenate((np.linspace(0.0,96.0,nb_class-1), [98.5,100.0]))
-#    elif nb_class > 4:
-#        q = np.concatenate(([0], np.linspace(12.5,96.0,nb_class-2), [98.5,100.0]))
-#    else:
-#        q = np.concatenate(([0], np.linspace(12.5,98,nb_class-1), [100.0]))
-#
-#    levels = np.percentile(np.concatenate((pot[pot.nonzero()], np.array([0.0]))),
-#                           q)
-
-#    levels = [0] + [pot.max()/i for i in range(1, nb_class + 1)][::-1] \
-#        if not user_defined_breaks else user_defined_breaks
-
-    levels = [0, pot.max()/(nb_class + 0.3)] \
-            + [pot.max()/i for i in range(2, nb_class-1)][::-1] \
-            + [pot.max() / 1.4, pot.max()] \
-        if not user_defined_breaks else user_defined_breaks
-
-    collec_poly = contourf(
-        xi, yi, zi,
-        levels,
-        vmax=abs(zi).max(), vmin=-abs(zi).max())
-
-    levels = collec_poly.levels
-    levels[-1] = np.nanmax(pot)
-    res = isopoly_to_gdf(collec_poly, levels=levels[1:], field_name="max")
-    res["min"] = [0] + [res["max"][i-1] for i in range(1, len(res))]
-    res["center"] = res["min"] + res["max"] / 2
-    if mask is not None:
-        res.geometry = res.geometry.buffer(0).intersection(
-                                        unary_union(mask.geometry.buffer(0)))
-    return res
-
-
 def isopoly_to_gdf(collec_poly, levels, field_name="levels"):
     """
     Convert a collection of matplotlib.contour.QuadContourSet to a GeoDataFrame
@@ -357,26 +275,231 @@ def isopoly_to_gdf(collec_poly, levels, field_name="levels"):
         return GeoDataFrame(geometry=polygons)
 
 
-def compute(knownpts, varname, span, beta, resolution,
-            typefct='exponential', mask=None, longlat=False):
-    if mask is None:
-        tmp = (((knownpts.total_bounds[2] - knownpts.total_bounds[0])/10) +
-               ((knownpts.total_bounds[3] - knownpts.total_bounds[1])/10)) / 2
-        tmp = span if tmp < span else tmp
-        bounds = knownpts.buffer(tmp).total_bounds
-    else:
-        bounds = mask.total_bounds
+class SmoothStewart:
+    def __init__(self, input_layer, variable_name, span, beta,
+                 typefct='exponential', resolution=None,
+                 variable_name2=None, mask=None):
 
-    unknownpts, shape = make_regular_points(bounds, resolution) if resolution \
-        else make_regular_points_with_no_res(bounds)
-    knwpts_coords = np.array([
-        (g.coords.xy[0][0], g.coords.xy[1][0]) for g in knownpts.geometry.centroid])
-    mat_dist = make_dist_mat(knwpts_coords, unknownpts, longlat=longlat)
+        self.gdf = input_layer if isinstance(input_layer, GeoDataFrame) else \
+            GeoDataFrame.from_file(input_layer).to_crs(crs="+proj=natearth")
+        self.info = (
+            'SmoothStewart - variable : {}{} ({} features)\n'
+            'beta : {} - span : {} - function : {}'
+            ).format(variable_name,
+                     " / {}".format(variable_name2) if variable_name2 else "",
+                     len(self.gdf), beta, span, typefct)
 
-    mat_dens = compute_interact_density(mat_dist, typefct, beta, span)
-#    mat_opport = compute_opportunity(knownpts, mat_dens, varname)
-#    pot = compute_potentials(mat_opport)
-#    pot = compute_opportunity_potentials(knownpts[varname].values, mat_dens)
-    pot = (knownpts[varname].values[:, np.newaxis] * mat_dens).sum(axis=0).round(8)
+        if mask is not None:
+            if mask == input_layer:
+                self.mask = self.gdf
+            elif isinstance(mask, GeoDataFrame):
+                self.mask = mask
+            else:
+                self.mask = GeoDataFrame.from_file(mask
+                    ).to_crs(crs="+proj=natearth")
+            if len(set(self.mask.type
+                       ).intersection({"Polygon", "MultiPolygon"})) > 0 \
+                    and self.gdf.crs == self.mask.crs:
+                self.use_mask = True
+            else:
+                self.use_mask = False
+        else:
+            self.use_mask = False
 
-    return pot, unknownpts, shape
+        self.info2 = ""
+        self.info3 = "Clipping mask: {}".format(self.use_mask)
+
+        self.compute_pot(variable_name, span, beta,
+                         variable_name2=variable_name2,
+                         resolution=resolution,
+                         typefct=typefct)
+
+    def __repr__(self):
+        return "\n".join([self.info, self.info2, self.info3])
+
+    def __str__(self):
+        return "\n".join([self.info, self.info2, self.info3])
+
+    @property
+    def properties(self):
+        print("\n".join([self.info, self.info2, self.info3]))
+
+    def _compute_interact_density(self, matdist, typefun, beta, span):
+        if 'pareto' in typefun:
+            alpha = (2 ** (1 / beta) - 1) / span
+            self.mat_dens = (1 + alpha * matdist) ** (-beta)
+        elif 'exponential' in typefun:
+            alpha = np.log(2) / span ** beta
+            self.mat_dens = np.exp(- alpha * matdist ** beta)
+        else:
+            raise ValueError('Bad interaction function argument: {}'
+                             .format(typefun))
+
+    def compute_pot(self, variable_name, span, beta,
+                    resolution=None, typefct="exponential",
+                    variable_name2=None, longlat=False):
+        knownpts = self.gdf
+        if self.use_mask:
+            bounds = self.mask.total_bounds
+        else:
+            tmp = (
+                ((knownpts.total_bounds[2] - knownpts.total_bounds[0])/10) +
+                ((knownpts.total_bounds[3] - knownpts.total_bounds[1])/10)
+                ) / 2
+            tmp = span if tmp < span else tmp
+            bounds = knownpts.buffer(tmp).total_bounds
+
+        self.unknownpts, self.shape = make_regular_points(bounds, resolution) \
+            if resolution else make_regular_points_with_no_res(bounds)
+
+        knwpts_coords = np.array([
+            (g.coords.xy[0][0], g.coords.xy[1][0])
+            for g in knownpts.geometry.centroid])
+
+        mat_dist = make_dist_mat(knwpts_coords,
+                                 self.unknownpts,
+                                 longlat=longlat)
+
+        self._compute_interact_density(mat_dist, typefct, beta, span)
+
+        if variable_name2:
+            self.pot1 = (
+                knownpts[variable_name].values[:, np.newaxis] * self.mat_dens
+                ).sum(axis=0)
+            self.pot2 = (
+                knownpts[variable_name2].values[:, np.newaxis] * self.mat_dens
+                ).sum(axis=0)
+            self.pot = (np.true_divide(self.pot1, self.pot2)
+                ).round(8)
+            _nan_mask = np.argwhere(~np.isnan(self.pot)).reshape(-1)
+            self.pot = self.pot[_nan_mask]
+            self.unknownpts = self.unknownpts[_nan_mask]
+
+        else:
+            self.pot = (
+                knownpts[variable_name].values[:, np.newaxis] * self.mat_dens
+                ).sum(axis=0).round(8)
+
+        self.x = np.array([c[0] for c in self.unknownpts])
+        self.y = np.array([c[1] for c in self.unknownpts])
+
+        self.xi = np.linspace(np.nanmin(self.x), np.nanmax(self.x),
+                              self.shape[0] if self.shape[0] > 100 else 100)
+        self.yi = np.linspace(np.nanmin(self.y), np.nanmax(self.y),
+                              self.shape[1] if self.shape[0] > 100 else 100)
+
+        self.info2 = ("unknown points : {} - interpolation grid shape : {}"
+                      ).format(len(self.unknownpts), self.shape)
+
+    def change_interp_grid_shape(self, new_shape):
+        self.xi = np.linspace(np.nanmin(self.x),
+                              np.nanmax(self.x),
+                              new_shape[0])
+        self.yi = np.linspace(np.nanmin(self.y),
+                              np.nanmax(self.y),
+                              new_shape[1])
+
+    def define_levels(self, nb_class, disc_func):
+        pot = self.pot
+        _min = np.nanmin(pot)
+        if not nb_class:
+            nb_class = get_opt_nb_class(len(self.pot)) - 2
+
+        if not disc_func or "prog_geom" in disc_func:
+            levels = [_min] + [
+                pot.max() / i for i in range(1, nb_class + 1)][::-1]
+        elif "equal_interval" in disc_func:
+            _bin = pot.max() / nb_class
+            levels = [_min] + [_bin * i for i in range(1, nb_class+1)]
+        elif "percentiles" in disc_func:
+            levels = np.percentile(
+                np.concatenate((pot[pot.nonzero()], np.array([_min]))),
+                np.linspace(0.0, 100.0, nb_class+1))
+        elif "opt1" in disc_func:
+            # Use percentiles in the middle but avoid making too many class
+            # on low values, but more class for high values (...) :
+            if nb_class > 15:
+                q = np.concatenate((np.linspace(0.0, 96.0, nb_class-1),
+                                    [98.5, 100.0]))
+            elif nb_class > 4:
+                q = np.concatenate(([0],
+                                    np.linspace(12.5, 96.0, nb_class-2),
+                                    [98.5, 100.0]))
+            else:
+                q = np.concatenate(
+                    ([_min], np.linspace(12.5, 98, nb_class-1), [100.0]))
+
+            levels = np.percentile(
+                np.concatenate((pot[pot.nonzero()], np.array([_min]))), q)
+        elif "opt2" in disc_func:
+            # Pretty ugly try to find a way to split the serie in class
+            levels = [_min, pot.max()/(nb_class + 0.3)] \
+                + [pot.max()/i for i in range(2, nb_class-1)][::-1] \
+                + [pot.max() / 1.4, pot.max()]
+        elif "jenks" in disc_func:
+            levels = jenks_breaks(np.concatenate(
+                ([_min], pot[pot.nonzero()])), nb_class)
+        elif "head_tail" in disc_func:
+            levels = head_tail_breaks(np.concatenate(
+                ([_min], pot[pot.nonzero()])))
+        elif "maximal_breaks" in disc_func:
+            levels = maximal_breaks(np.concatenate(
+                ([_min], pot[pot.nonzero()])), nb_class)
+        else:
+            raise ValueError
+
+        return levels
+
+    def render(self, nb_class=8, disc_func=None,
+               user_defined_breaks=None,
+               func_grid="scipy", output="GeoJSON",
+               new_mask=False):
+        pot = self.pot
+        if 'jenks' in disc_func and not jenks_breaks:
+            raise ValueError(
+                "Missing jenkspy package - could not use jenks breaks")
+        if new_mask is None:
+            self.use_mask = False
+            self.mask = None
+        elif new_mask:
+            self.use_mask = True
+            self.mask = GeoDataFrame.from_file(
+                new_mask).to_crs(crs="+proj=natearth")
+
+        if func_grid == "scipy":
+            self.zi = scipy_griddata((self.x, self.y), pot,
+                                     (self.xi[None, :], self.yi[:, None]),
+                                     method='cubic').round(8)
+        elif func_grid == "matplotlib":
+            self.zi = mlab_griddata(self.x, self.y, pot,
+                                    self.xi, self.yi, interp='linear'
+                                    ).round(8)
+        elif func_grid == "rbf":
+            rbf = Rbf(self.x, self.y, pot, epsilon=2)
+            XI, YI = np.meshgrid(self.xi, self.yi)
+            self.zi = rbf(XI, YI)
+
+        if user_defined_breaks:
+            levels = user_defined_breaks
+        else:
+            levels = self.define_levels(nb_class, disc_func)
+
+        collec_poly = contourf(
+            self.xi, self.yi, self.zi,
+            levels,
+            vmax=abs(np.nanmax(self.zi)), vmin=-abs(np.nanmin(self.zi)))
+
+        levels = collec_poly.levels
+        levels[-1] = np.nanmax(pot)
+        res = isopoly_to_gdf(collec_poly, levels=levels[1:], field_name="max")
+        res.crs = self.gdf.crs
+        res["min"] = [np.nanmin(self.pot)] + [res["max"][i-1] for i in range(1, len(res))]
+        res["center"] = (res["min"] + res["max"]) / 2
+
+        if self.use_mask:
+            res.geometry = res.geometry.buffer(
+                0).intersection(unary_union(self.mask.geometry.buffer(0)))
+
+        return res.to_crs({'init': 'epsg:4326'}).to_json().encode() \
+            if "geojson" in output.lower() \
+            else res.to_crs({'init': 'epsg:4326'})
