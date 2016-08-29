@@ -18,7 +18,7 @@ from geopandas import GeoDataFrame
 try:
     from jenksPy import jenks_breaks
 except:
-    jenks_breaks = False
+    jenks_breaks = None
 from .helpers_classif import get_opt_nb_class, maximal_breaks, head_tail_breaks
 
 
@@ -403,7 +403,7 @@ class SmoothStewart:
         pot = self.pot
         _min = np.nanmin(pot)
         if not nb_class:
-            nb_class = get_opt_nb_class(len(self.pot)) - 2
+            nb_class = int(get_opt_nb_class(len(self.pot)) - 2)
 
         if not disc_func or "prog_geom" in disc_func:
             levels = [_min] + [
@@ -454,10 +454,12 @@ class SmoothStewart:
                user_defined_breaks=None,
                func_grid="scipy", output="GeoJSON",
                new_mask=False):
-        pot = self.pot
-        if 'jenks' in disc_func and not jenks_breaks:
+        if disc_func and 'jenks' in disc_func and not jenks_breaks:
             raise ValueError(
                 "Missing jenkspy package - could not use jenks breaks")
+
+        pot = self.pot
+
         if new_mask is None:
             self.use_mask = False
             self.mask = None

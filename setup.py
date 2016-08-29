@@ -14,7 +14,7 @@ with open("requirements.txt") as f:
 with open(path.join('smoomapy', '__init__.py')) as f:
     __version__ = parse(next(filter(lambda line: line.startswith('__version__'),
                                      f))).body[0].value.s
-    print(__version__)
+
 setup(
     name='smoomapy',
     version=__version__,
