@@ -15,12 +15,17 @@ with open(path.join('smoomapy', '__init__.py')) as f:
     __version__ = parse(next(filter(lambda line: line.startswith('__version__'),
                                      f))).body[0].value.s
 
+with open("README.rst") as f:
+    long_desc = f.read()
+
 setup(
     name='smoomapy',
     version=__version__,
     author="mthh",
     author_email="matthieu.viry@ums-riate.fr",
     packages=find_packages(),
+    description="Make smoothed maps from a geo layer",
+    long_description=long_desc,
     url='http://github.com/mthh/smoomapy',
     license="MIT",
     test_suite="tests",

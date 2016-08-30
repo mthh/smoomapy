@@ -43,30 +43,32 @@ def quick_stewart(input_geojson_points, variable_name, span,
         The span!
     beta: float
         The beta!
-    typefct: str, default "exponential"
-        The type of function in {"exponential", "pareto"}
+    typefct: str, optionnal
+        The type of function in {"exponential", "pareto"} (default: "exponential")
     nb_class: int, default None
-        The number of class, if unset will most likely be 8.
-    resolution: int, default None
+        The number of class, if unset will most likely be 8
+        (default: None)
+    resolution: int, optionnal
         The resolution to use (in unit of the input file), if not set a resolution
-        will be used in order to make a grid containing around 7560 pts.
-    mask: str, default None
-        Path to the file (Polygons only) to use as clipping mask.
-    user_defined_breaks: list or tuple, default None
+        will be used in order to make a grid containing around 7560 pts
+        (default: None).
+    mask: str, optionnal
+        Path to the file (Polygons only) to use as clipping mask (default: None).
+    user_defined_breaks: list or tuple, optionnal
         A list of ordered break to use to construct the contours
-        (override `nb_class` value if any)
-    variable_name2: str
+        (override `nb_class` value if any, default: None).
+    variable_name2: str, optionnal
         The name of the 2nd variable to use (numerical field only); values
         computed from this variable will be will be used as to divide
-        values computed from the first variable.
+        values computed from the first variable (default: None)
     output: string, optionnal
         The type of output expected (not case-sensitive) in {"GeoJSON", "GeoDataFrame"}
         (default: "GeoJSON")
 
     Returns
     -------
-    smoothed_geojson: bytes,
-        The result dumped as GeoJSON (utf-8 encoded)
+    smoothed_result: bytes or GeoDataFrame,
+        The result, dumped as GeoJSON (utf-8 encoded) or as a GeoDataFrame.
 
 
     Examples
@@ -76,7 +78,7 @@ def quick_stewart(input_geojson_points, variable_name, span,
     >>> result = quick_stewart("some_file.geojson", "some_variable",
                                span=12500, beta=3, typefct="exponential")
 
-    Mote options, returning a GeoDataFrame:
+    More options, returning a GeoDataFrame:
 
     >>> smooth_gdf = quick_stewart("some_file.geojson", "some_variable",
                                    span=12500, beta=3, typefct="pareto",
@@ -276,6 +278,52 @@ def isopoly_to_gdf(collec_poly, levels, field_name="levels"):
 
 
 class SmoothStewart:
+    """
+    Main function, acting as a one-shot wrapper around SmoothStewart object.
+    Read a file of point values and optionnaly a mask file,
+    return the smoothed representation as GeoJSON or GeoDataFrame.
+
+    Parameters
+    ----------
+    input_layer: str
+        Path to file to use as input (Points/Polygons) or GeoDataFrame object,
+        must contains a relevant numerical field.
+    variable_name: str
+        The name of the variable to use (numerical field only).
+    span: int
+        The span!
+    beta: float
+        The beta!
+    typefct: str, optionnal
+        The type of function in {"exponential", "pareto"} (default: "exponential")
+    resolution: int, optionnal
+        The resolution to use (in unit of the input file), if not set a resolution
+        will be used in order to make a grid containing around 7560 pts
+        (default: None).
+    mask: str, optionnal
+        Path to the file (Polygons only) to use as clipping mask (default: None).
+    variable_name2: str, optionnal
+        The name of the 2nd variable to use (numerical field only); values
+        computed from this variable will be will be used as to divide
+        values computed from the first variable (default: None)
+
+    Attributes
+    ----------
+    pot: numpy.ndarray
+        The computed potential values for each `unknownpts`.
+    unknownpts: numpy.ndarray
+        The coordinates for each unknown points, on which values
+        have been computed according to the choosen model (span, beta, etc.)
+
+    Methods
+    -------
+    render(nb_class=8, disc_func=None, user_defined_breaks=None,
+           func_grid="scipy", output="GeoJSON", new_mask=False)
+        Render the contour polygon according to the choosen number of class and
+        the choosen classification method (or according to
+        `user_defined_breaks` which will overwrite these parameters)
+    """
+
     def __init__(self, input_layer, variable_name, span, beta,
                  typefct='exponential', resolution=None,
                  variable_name2=None, mask=None):
@@ -450,10 +498,35 @@ class SmoothStewart:
 
         return levels
 
-    def render(self, nb_class=8, disc_func=None,
-               user_defined_breaks=None,
-               func_grid="scipy", output="GeoJSON",
-               new_mask=False):
+    def render(self, nb_class=8, disc_func=None, user_defined_breaks=None,
+               func_grid="scipy", output="GeoJSON", new_mask=False):
+        """
+        Parameters
+        ----------
+        nb_class: int, optionnal
+            The number of class (default: 8).
+        disc_func: str, optionnal
+            The kind of data classification to be used (to be choosed in
+            "equal_interval", "jenks", "percentiles, "head_tail_breaks"
+            and "prog_geom"), default: None.
+        user_defined_breaks: list or tuple, optionnal
+            A list of ordered break to use to construct the contours
+            (override `nb_class` and `disc_func` values if any)
+            (default: None).
+        func_grid: str, optionnal
+            The kind of function to use to make the interpolation
+            ("scipy" for scipy.interpolate.griddata,
+             "matplotlib" for matplotlib.mlab.griddata,
+             "rbf" for scipy.interpolate.rbf, default: "scipy").
+        output: string, optionnal
+            The type of output expected (not case-sensitive) in {"GeoJSON", "GeoDataFrame"}
+            (default: "GeoJSON").
+
+        Returns
+        -------
+        smoothed_result: bytes or GeoDataFrame
+            The result, dumped as GeoJSON (utf-8 encoded) or as a GeoDataFrame.
+        """
         if disc_func and 'jenks' in disc_func and not jenks_breaks:
             raise ValueError(
                 "Missing jenkspy package - could not use jenks breaks")
