@@ -4,7 +4,7 @@ smoomapy
 Make smoothed maps in your python environnement
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-|Build Status|
+|Build Status| |Version|
 
 More or less a python port of *Stewart method* from R SpatialPositon
 package (https://github.com/Groupe-ElementR/SpatialPosition/) Allow to
@@ -60,14 +60,14 @@ Object-oriented API, allowing to easily redraw contours with new breaks values o
 .. figure:: misc/export_plot.png
    :alt: png
 
-   png
 
 The long part of the computation is done during the initialization of
 ``SmoothStewart`` instance (i.e. actually computing potentials). Some
 convenience methods allows to tweak and re-export the few last steps :
 
-***Allow to quickly redraw polygons with a new classification method (or
-with new interpolation functionnality)*** Availables classification
+**Allow to quickly redraw polygons with a new classification method (or
+with new interpolation functionnality)**
+Availables classification
 methods are: "equal\_interval", "prog\_geom", "jenks", "percentiles" and
 "head-tail-breaks"
 
@@ -78,8 +78,8 @@ methods are: "equal\_interval", "prog\_geom", "jenks", "percentiles" and
     >>> res = StePot.render(nb_class=6, func_grid="scipy",
                             disc_func="percentiles", output="GeoDataFrame")
 
-***Allow to set custom break values (highly recommended after a first
-rendering or having take a look at the distibution):***
+**Allow to set custom break values (highly recommended after a first
+rendering or having take a look at the distibution):**
 
 .. code:: python
 
@@ -89,7 +89,7 @@ rendering or having take a look at the distibution):***
     >>> res = StePot.render(nb_class=6, user_defined_breaks=my_breaks,
                             output="GeoDataFrame")
 
-***Some other smoothing methods can be used (experimental!) :***
+**Some other smoothing methods can be used (experimental!) :**
 
 .. code:: python
 
@@ -117,3 +117,6 @@ From github :
 
 .. |Build Status| image:: https://travis-ci.org/mthh/smoomapy.svg?branch=master
    :target: https://travis-ci.org/mthh/smoomapy
+
+.. |Version| image:: https://img.shields.io/pypi/v/smoomapy.svg
+   :target: https://pypi.python.org/pypi/smoomapy
