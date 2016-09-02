@@ -9,6 +9,7 @@ Allow to set a desired number of class and choose discretization method
 @author: mthh
 """
 import numpy as np
+import pyproj
 from scipy.interpolate import griddata as scipy_griddata, Rbf
 from matplotlib.mlab import griddata as mlab_griddata
 from matplotlib.pyplot import contourf
@@ -34,40 +35,40 @@ def quick_stewart(input_geojson_points, variable_name, span,
 
     Parameters
     ----------
-    input_geojson_points: str
+    input_geojson_points : str
         Path to file to use as input (Points/Polygons) or GeoDataFrame object,
         must contains a relevant numerical field.
-    variable_name: str
+    variable_name : str
         The name of the variable to use (numerical field only).
-    span: int
+    span : int
         The span!
-    beta: float
+    beta : float
         The beta!
-    typefct: str, optionnal
+    typefct : str, optionnal
         The type of function in {"exponential", "pareto"} (default: "exponential")
-    nb_class: int, default None
+    nb_class : int, default None
         The number of class, if unset will most likely be 8
         (default: None)
-    resolution: int, optionnal
+    resolution : int, optionnal
         The resolution to use (in unit of the input file), if not set a resolution
         will be used in order to make a grid containing around 7560 pts
         (default: None).
-    mask: str, optionnal
+    mask : str, optionnal
         Path to the file (Polygons only) to use as clipping mask (default: None).
-    user_defined_breaks: list or tuple, optionnal
+    user_defined_breaks : list or tuple, optionnal
         A list of ordered break to use to construct the contours
         (override `nb_class` value if any, default: None).
-    variable_name2: str, optionnal
+    variable_name2 : str, optionnal
         The name of the 2nd variable to use (numerical field only); values
         computed from this variable will be will be used as to divide
         values computed from the first variable (default: None)
-    output: string, optionnal
+    output : string, optionnal
         The type of output expected (not case-sensitive) in {"GeoJSON", "GeoDataFrame"}
         (default: "GeoJSON")
 
     Returns
     -------
-    smoothed_result: bytes or GeoDataFrame,
+    smoothed_result : bytes or GeoDataFrame,
         The result, dumped as GeoJSON (utf-8 encoded) or as a GeoDataFrame.
 
 
@@ -98,16 +99,16 @@ def make_regular_points_with_no_res(bounds, nb_points=7560):
 
     Parameters
     ----------
-    bounds: 4-floats tuple
+    bounds : 4-floats tuple
         The bbox of the grid, as xmin, ymin, xmax, ymax.
-    nb_points: int, optionnal
+    nb_points : int, optionnal
         The desired number of points (default: 7560)
 
     Returns
     -------
-    points: numpy.array
+    points : numpy.array
         An array of coordinates
-    shape: 2-floats tuple
+    shape : 2-floats tuple
         The number of points on each dimension (width, height)
     """
     xmin, ymin, xmax, ymax = bounds
@@ -143,33 +144,28 @@ def make_regular_points(bounds, resolution):
 
     Parameters
     ----------
-    bounds: 4-floats tuple
+    bounds : 4-floats tuple
         The bbox of the grid, as xmin, ymin, xmax, ymax.
-    resolution: int
+    resolution : int
         The resolution to use, in the same unit as `bounds`
 
     Returns
     -------
-    points: numpy.array
+    points : numpy.array
         An array of coordinates
-    shape: 2-floats tuple
+    shape : 2-floats tuple
         The number of points on each dimension (width, height)
     """
     xmin, ymin, xmax, ymax = bounds
-    nb_x = int(round(
-        (xmax - xmin) / resolution + ((xmax - xmin) / resolution) / 10))
-    nb_y = int(round(
-        (ymax - ymin) / resolution + ((ymax - ymin) / resolution) / 10))
+    nb_x = int(round((xmax - xmin) / resolution))
+    nb_y = int(round((ymax - ymin) / resolution))
 
 #    try:
     prog_x = \
-        [(xmin - (xmax - xmin) / 20) + resolution * i for i in range(nb_x + 1)]
+        [xmin + (resolution * i) for i in range(nb_x + 1)]
     prog_y = \
-        [(ymin - (ymax - ymin) / 20) + resolution * i for i in range(nb_y + 1)]
-#    except ZeroDivisionError:
-#        raise ZeroDivisionError(
-#            'Please choose a finest resolution (by lowering the value of the '
-#            'resolution argument and/or providing an appropriate mask layer')
+        [ymin + (resolution * i) for i in range(nb_y + 1)]
+
     return (np.array([(x, y) for x in prog_x for y in prog_y]),
             (len(prog_x), len(prog_y)))
 
@@ -181,17 +177,17 @@ def make_dist_mat(xy1, xy2, longlat=False):
 
     Parameters
     ----------
-    xy1: numpy.array
+    xy1 : numpy.array
         The first set of coordinates as [(x, y), (x, y), (x, y)].
-    xy2: numpy.array
+    xy2 : numpy.array
         The second set of coordinates as [(x, y), (x, y), (x, y)].
-    longlat: boolean, optionnal
+    longlat : boolean, optionnal
         Whether the coordinates are in geographic (longitude/latitude) format
         or not (default: False)
 
     Returns
     -------
-    mat_dist: numpy.array
+    mat_dist : numpy.array
         The distance matrix between xy1 and xy2
     """
     if not longlat:
@@ -199,7 +195,7 @@ def make_dist_mat(xy1, xy2, longlat=False):
         d1 = np.subtract.outer(xy1[:, 1], xy2[:, 1])
         return np.hypot(d0, d1)
     else:
-        return hav_dist(xy1, xy2)
+        return hav_dist(xy1[:, None], xy2)
 
 
 def hav_dist(locs1, locs2, k=np.pi/180):
@@ -209,14 +205,14 @@ def hav_dist(locs1, locs2, k=np.pi/180):
 
     Parameters
     ----------
-    locs1: numpy.array
+    locs1 : numpy.array
         The first set of coordinates as [(long, lat), (long, lat)].
-    locs2: numpy.array
+    locs2 : numpy.array
         The second set of coordinates as [(long, lat), (long, lat)].
 
     Returns
     -------
-    mat_dist: numpy.array
+    mat_dist : numpy.array
         The distance matrix between locs1 and locs2
     """
     locs1 = locs1 * k
@@ -225,7 +221,15 @@ def hav_dist(locs1, locs2, k=np.pi/180):
     cos_lat2 = np.cos(locs2[..., 1])
     cos_lat_d = np.cos(locs1[..., 1] - locs2[..., 1])
     cos_lon_d = np.cos(locs1[..., 0] - locs2[..., 0])
-    return 6367 * np.arccos(cos_lat_d - cos_lat1 * cos_lat2 * (1 - cos_lon_d))
+    return 6367000 * np.arccos(cos_lat_d - cos_lat1 * cos_lat2 * (1 - cos_lon_d))
+
+
+def check_bounds(xmin, ymin, xmax, ymax):
+    if ymin < -9072187.8573143743:
+        ymin = 9072187.8573143743
+    if ymax > 9072187.8573143743:
+        ymax = 9072187.8573143743
+    return xmin, ymin, xmax, ymax
 
 
 def isopoly_to_gdf(collec_poly, levels, field_name="levels"):
@@ -236,16 +240,16 @@ def isopoly_to_gdf(collec_poly, levels, field_name="levels"):
 
     Parameters
     ----------
-    collection_polygons: matplotlib.contour.QuadContourSet
+    collection_polygons : matplotlib.contour.QuadContourSet
         The result of a grid interpolation from matplotlib.
-    levels: array-like
+    levels : array-like
         The value to use as attributes for the constructed GeoDataFrame.
-    field_name: string,
+    field_name : str
         The name of the field to be fill by `levels` variable (default: "levels")
 
     Returns
     -------
-    gdf_contours: GeoDataFrame
+    gdf_contours : GeoDataFrame
         The result as a GeoDataFrame.
     """
     polygons, data = [], []
@@ -279,39 +283,39 @@ def isopoly_to_gdf(collec_poly, levels, field_name="levels"):
 
 class SmoothStewart:
     """
-    Main function, acting as a one-shot wrapper around SmoothStewart object.
-    Read a file of point values and optionnaly a mask file,
-    return the smoothed representation as GeoJSON or GeoDataFrame.
+    Main object, allowing to create an instance with some required parameters
+    (span, beta, etc.) then render the contour polygons according to various
+    parameters (data classification, number of bins, output format, etc.)
 
     Parameters
     ----------
-    input_layer: str
+    input_layer : str
         Path to file to use as input (Points/Polygons) or GeoDataFrame object,
         must contains a relevant numerical field.
-    variable_name: str
+    variable_name : str
         The name of the variable to use (numerical field only).
-    span: int
+    span : int
         The span!
-    beta: float
+    beta : float
         The beta!
-    typefct: str, optionnal
+    typefct : str, optionnal
         The type of function in {"exponential", "pareto"} (default: "exponential")
-    resolution: int, optionnal
+    resolution : int, optionnal
         The resolution to use (in unit of the input file), if not set a resolution
         will be used in order to make a grid containing around 7560 pts
         (default: None).
-    mask: str, optionnal
+    mask : str, optionnal
         Path to the file (Polygons only) to use as clipping mask (default: None).
-    variable_name2: str, optionnal
+    variable_name2 : str, optionnal
         The name of the 2nd variable to use (numerical field only); values
         computed from this variable will be will be used as to divide
         values computed from the first variable (default: None)
 
     Attributes
     ----------
-    pot: numpy.ndarray
+    pot : numpy.ndarray
         The computed potential values for each `unknownpts`.
-    unknownpts: numpy.ndarray
+    unknownpts : numpy.ndarray
         The coordinates for each unknown points, on which values
         have been computed according to the choosen model (span, beta, etc.)
 
@@ -326,8 +330,8 @@ class SmoothStewart:
 
     def __init__(self, input_layer, variable_name, span, beta,
                  typefct='exponential', resolution=None,
-                 variable_name2=None, mask=None):
-
+                 variable_name2=None, mask=None, **kwargs):
+        distGeo = kwargs.get("distGeo", kwargs.get("longlat", False))
         self.gdf = input_layer if isinstance(input_layer, GeoDataFrame) else \
             GeoDataFrame.from_file(input_layer).to_crs(crs="+proj=natearth")
         self.info = (
@@ -338,10 +342,10 @@ class SmoothStewart:
                      len(self.gdf), beta, span, typefct)
 
         if mask is not None:
-            if mask == input_layer:
-                self.mask = self.gdf
-            elif isinstance(mask, GeoDataFrame):
+            if isinstance(mask, GeoDataFrame):
                 self.mask = mask
+            elif isinstance(mask, str) and mask == input_layer:
+                self.mask = self.gdf
             else:
                 self.mask = GeoDataFrame.from_file(mask
                     ).to_crs(crs="+proj=natearth")
@@ -360,7 +364,7 @@ class SmoothStewart:
         self.compute_pot(variable_name, span, beta,
                          variable_name2=variable_name2,
                          resolution=resolution,
-                         typefct=typefct)
+                         typefct=typefct, longlat=distGeo)
 
     def __repr__(self):
         return "\n".join([self.info, self.info2, self.info3])
@@ -395,18 +399,39 @@ class SmoothStewart:
                 ((knownpts.total_bounds[3] - knownpts.total_bounds[1])/10)
                 ) / 2
             tmp = span if tmp < span else tmp
-            bounds = knownpts.buffer(tmp).total_bounds
+            bounds = check_bounds(*knownpts.buffer(tmp).total_bounds)
 
         self.unknownpts, self.shape = make_regular_points(bounds, resolution) \
             if resolution else make_regular_points_with_no_res(bounds)
 
-        knwpts_coords = np.array([
-            (g.coords.xy[0][0], g.coords.xy[1][0])
-            for g in knownpts.geometry.centroid])
+        if not longlat:
+            knwpts_coords = np.array([
+                (g.coords.xy[0][0], g.coords.xy[1][0])
+                for g in knownpts.geometry.centroid])
 
-        mat_dist = make_dist_mat(knwpts_coords,
-                                 self.unknownpts,
-                                 longlat=longlat)
+            mat_dist = make_dist_mat(knwpts_coords,
+                                     self.unknownpts,
+                                     longlat=longlat)
+
+        else:
+            knwpts_coords = np.array([
+                [g.coords.xy[1][0], g.coords.xy[0][0]]
+                for g in knownpts.to_crs(
+                    {"init": "epsg:4326"}).geometry.centroid])
+
+            natearth = pyproj.Proj("+proj=natearth")
+            wgs84 = pyproj.Proj("+init=EPSG:4326")
+
+            xx, yy = pyproj.transform(
+                natearth, wgs84,
+                [i[0] for i in self.unknownpts],
+                [i[1] for i in self.unknownpts])
+
+            self.geo_unknownpts = np.array([[i[1], i[0]] for i in zip(xx, yy)])
+
+            mat_dist = make_dist_mat(knwpts_coords,
+                                     self.geo_unknownpts,
+                                     longlat=longlat)
 
         self._compute_interact_density(mat_dist, typefct, beta, span)
 
@@ -463,30 +488,10 @@ class SmoothStewart:
             levels = np.percentile(
                 np.concatenate((pot[pot.nonzero()], np.array([_min]))),
                 np.linspace(0.0, 100.0, nb_class+1))
-        elif "opt1" in disc_func:
-            # Use percentiles in the middle but avoid making too many class
-            # on low values, but more class for high values (...) :
-            if nb_class > 15:
-                q = np.concatenate((np.linspace(0.0, 96.0, nb_class-1),
-                                    [98.5, 100.0]))
-            elif nb_class > 4:
-                q = np.concatenate(([0],
-                                    np.linspace(12.5, 96.0, nb_class-2),
-                                    [98.5, 100.0]))
-            else:
-                q = np.concatenate(
-                    ([_min], np.linspace(12.5, 98, nb_class-1), [100.0]))
-
-            levels = np.percentile(
-                np.concatenate((pot[pot.nonzero()], np.array([_min]))), q)
-        elif "opt2" in disc_func:
-            # Pretty ugly try to find a way to split the serie in class
-            levels = [_min, pot.max()/(nb_class + 0.3)] \
-                + [pot.max()/i for i in range(2, nb_class-1)][::-1] \
-                + [pot.max() / 1.4, pot.max()]
         elif "jenks" in disc_func:
-            levels = jenks_breaks(np.concatenate(
-                ([_min], pot[pot.nonzero()])), nb_class)
+            levels = list(jenks_breaks(np.concatenate(
+                ([_min], pot[pot.nonzero()])), nb_class))
+            levels[0] = levels[0] - _min * 0.01
         elif "head_tail" in disc_func:
             levels = head_tail_breaks(np.concatenate(
                 ([_min], pot[pot.nonzero()])))
@@ -503,28 +508,28 @@ class SmoothStewart:
         """
         Parameters
         ----------
-        nb_class: int, optionnal
+        nb_class : int, optionnal
             The number of class (default: 8).
-        disc_func: str, optionnal
+        disc_func : str, optionnal
             The kind of data classification to be used (to be choosed in
             "equal_interval", "jenks", "percentiles, "head_tail_breaks"
             and "prog_geom"), default: None.
-        user_defined_breaks: list or tuple, optionnal
+        user_defined_breaks : list or tuple, optionnal
             A list of ordered break to use to construct the contours
             (override `nb_class` and `disc_func` values if any)
             (default: None).
-        func_grid: str, optionnal
+        func_grid : str, optionnal
             The kind of function to use to make the interpolation
             ("scipy" for scipy.interpolate.griddata,
              "matplotlib" for matplotlib.mlab.griddata,
              "rbf" for scipy.interpolate.rbf, default: "scipy").
-        output: string, optionnal
+        output : string, optionnal
             The type of output expected (not case-sensitive) in {"GeoJSON", "GeoDataFrame"}
             (default: "GeoJSON").
 
         Returns
         -------
-        smoothed_result: bytes or GeoDataFrame
+        smoothed_result : bytes or GeoDataFrame
             The result, dumped as GeoJSON (utf-8 encoded) or as a GeoDataFrame.
         """
         if disc_func and 'jenks' in disc_func and not jenks_breaks:
@@ -544,7 +549,15 @@ class SmoothStewart:
         if func_grid == "scipy":
             self.zi = scipy_griddata((self.x, self.y), pot,
                                      (self.xi[None, :], self.yi[:, None]),
+                                     method='linear').round(8)
+        elif func_grid == "scipy-cubic":
+            self.zi = scipy_griddata((self.x, self.y), pot,
+                                     (self.xi[None, :], self.yi[:, None]),
                                      method='cubic').round(8)
+        elif func_grid == "scipy-nearest":
+            self.zi = scipy_griddata((self.x, self.y), pot,
+                                     (self.xi[None, :], self.yi[:, None]),
+                                     method='nearest').round(8)
         elif func_grid == "matplotlib":
             self.zi = mlab_griddata(self.x, self.y, pot,
                                     self.xi, self.yi, interp='linear'
@@ -563,18 +576,22 @@ class SmoothStewart:
             self.xi, self.yi, self.zi,
             levels,
             vmax=abs(np.nanmax(self.zi)), vmin=-abs(np.nanmin(self.zi)))
-
         levels = collec_poly.levels
         levels[-1] = np.nanmax(pot)
         res = isopoly_to_gdf(collec_poly, levels=levels[1:], field_name="max")
         res.crs = self.gdf.crs
-        res["min"] = [np.nanmin(self.pot)] + [res["max"][i-1] for i in range(1, len(res))]
+        res["min"] = [np.nanmin(self.pot)] + res["max"][0:len(res)-1].tolist()
         res["center"] = (res["min"] + res["max"]) / 2
 
         if self.use_mask:
             res.geometry = res.geometry.buffer(
                 0).intersection(unary_union(self.mask.geometry.buffer(0)))
-
+            # Repair geometries if necessary :
+            if not (t == "MultiPolygon" for t in res.geom_type):
+                res.geometry = \
+                    [geom if geom.type == "MultiPolygon" else MultiPolygon(
+                         [j for j in geom if j.type in ('Polygon', 'MultiPolygon')])
+                     for geom in res.geometry]
         return res.to_crs({'init': 'epsg:4326'}).to_json().encode() \
             if "geojson" in output.lower() \
             else res.to_crs({'init': 'epsg:4326'})
