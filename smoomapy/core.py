@@ -13,7 +13,8 @@ import pyproj
 from scipy.interpolate import griddata as scipy_griddata, Rbf
 from matplotlib.mlab import griddata as mlab_griddata
 from matplotlib.pyplot import contourf
-from shapely.geometry import Polygon, MultiPolygon
+from shapely.geometry import Polygon, MultiPolygon, Point
+from shapely.prepared import prep
 from shapely.ops import unary_union
 from geopandas import GeoDataFrame
 try:
@@ -225,8 +226,8 @@ def hav_dist(locs1, locs2, k=np.pi/180):
 
 
 def check_bounds(xmin, ymin, xmax, ymax):
-    if ymin < -9072187.8573143743:
-        ymin = 9072187.8573143743
+    if ymin < -9072187:
+        ymin = -9072187
     if ymax > 9072187.8573143743:
         ymax = 9072187.8573143743
     return xmin, ymin, xmax, ymax
@@ -280,6 +281,12 @@ def isopoly_to_gdf(collec_poly, levels, field_name="levels"):
     else:
         return GeoDataFrame(geometry=polygons)
 
+class Idx:
+    def __init__(self):
+        self.values = []
+    def add(self, value):
+        self.values.append(value)
+        return True
 
 class SmoothStewart:
     """
@@ -331,9 +338,10 @@ class SmoothStewart:
     def __init__(self, input_layer, variable_name, span, beta,
                  typefct='exponential', resolution=None,
                  variable_name2=None, mask=None, **kwargs):
-        distGeo = kwargs.get("distGeo", kwargs.get("longlat", False))
+        self.longlat = kwargs.get("distGeo", kwargs.get("longlat", False))
         self.gdf = input_layer if isinstance(input_layer, GeoDataFrame) else \
             GeoDataFrame.from_file(input_layer).to_crs(crs="+proj=natearth")
+        self.gdf = self.gdf[self.gdf[variable_name].notnull()]
         self.info = (
             'SmoothStewart - variable : {}{} ({} features)\n'
             'beta : {} - span : {} - function : {}'
@@ -344,7 +352,8 @@ class SmoothStewart:
         if mask is not None:
             if isinstance(mask, GeoDataFrame):
                 self.mask = mask
-            elif isinstance(mask, str) and mask == input_layer:
+            elif isinstance(mask, str) and isinstance(input_layer, str) \
+                    and mask == input_layer:
                 self.mask = self.gdf
             else:
                 self.mask = GeoDataFrame.from_file(mask
@@ -364,7 +373,7 @@ class SmoothStewart:
         self.compute_pot(variable_name, span, beta,
                          variable_name2=variable_name2,
                          resolution=resolution,
-                         typefct=typefct, longlat=distGeo)
+                         typefct=typefct)
 
     def __repr__(self):
         return "\n".join([self.info, self.info2, self.info3])
@@ -389,7 +398,7 @@ class SmoothStewart:
 
     def compute_pot(self, variable_name, span, beta,
                     resolution=None, typefct="exponential",
-                    variable_name2=None, longlat=False):
+                    variable_name2=None):
         knownpts = self.gdf
         if self.use_mask:
             bounds = self.mask.total_bounds
@@ -399,19 +408,20 @@ class SmoothStewart:
                 ((knownpts.total_bounds[3] - knownpts.total_bounds[1])/10)
                 ) / 2
             tmp = span if tmp < span else tmp
-            bounds = check_bounds(*knownpts.buffer(tmp).total_bounds)
+#            bounds = check_bounds(*knownpts.buffer(tmp).total_bounds)
+            bounds = knownpts.buffer(tmp).total_bounds
 
         self.unknownpts, self.shape = make_regular_points(bounds, resolution) \
             if resolution else make_regular_points_with_no_res(bounds)
 
-        if not longlat:
+        if not self.longlat:
             knwpts_coords = np.array([
                 (g.coords.xy[0][0], g.coords.xy[1][0])
                 for g in knownpts.geometry.centroid])
 
             mat_dist = make_dist_mat(knwpts_coords,
                                      self.unknownpts,
-                                     longlat=longlat)
+                                     longlat=False)
 
         else:
             knwpts_coords = np.array([
@@ -422,16 +432,23 @@ class SmoothStewart:
             natearth = pyproj.Proj("+proj=natearth")
             wgs84 = pyproj.Proj("+init=EPSG:4326")
 
-            xx, yy = pyproj.transform(
-                natearth, wgs84,
-                [i[0] for i in self.unknownpts],
-                [i[1] for i in self.unknownpts])
+            prep_mask = prep(Polygon([(-179.9999, 89.9999),
+                                      (179.9999, 89.9999),
+                                     (179.9999, -89.9999),
+                                     (-179.9999, -89.9999),
+                                     (-179.9999, 89.9999)]))
+            idx = Idx()
+            self.geo_unknownpts = np.array([[i[1], i[0]] for n, i in enumerate(zip(
+                *pyproj.transform(natearth, wgs84,
+                                  [i[0] for i in self.unknownpts],
+                                  [i[1] for i in self.unknownpts])))
+                if prep_mask.contains(Point(i)) and idx.add(n)])
 
-            self.geo_unknownpts = np.array([[i[1], i[0]] for i in zip(xx, yy)])
+            self.unknownpts = self.unknownpts[idx.values]
 
             mat_dist = make_dist_mat(knwpts_coords,
                                      self.geo_unknownpts,
-                                     longlat=longlat)
+                                     longlat=True)
 
         self._compute_interact_density(mat_dist, typefct, beta, span)
 
@@ -579,6 +596,7 @@ class SmoothStewart:
         levels = collec_poly.levels
         levels[-1] = np.nanmax(pot)
         res = isopoly_to_gdf(collec_poly, levels=levels[1:], field_name="max")
+
         res.crs = self.gdf.crs
         res["min"] = [np.nanmin(self.pot)] + res["max"][0:len(res)-1].tolist()
         res["center"] = (res["min"] + res["max"]) / 2
@@ -587,7 +605,7 @@ class SmoothStewart:
             res.geometry = res.geometry.buffer(
                 0).intersection(unary_union(self.mask.geometry.buffer(0)))
             # Repair geometries if necessary :
-            if not (t == "MultiPolygon" for t in res.geom_type):
+            if not all(t == "MultiPolygon" or t == "Polygon" for t in res.geom_type):
                 res.geometry = \
                     [geom if geom.type == "MultiPolygon" else MultiPolygon(
                          [j for j in geom if j.type in ('Polygon', 'MultiPolygon')])
