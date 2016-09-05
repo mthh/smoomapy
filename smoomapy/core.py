@@ -218,10 +218,10 @@ def hav_dist(locs1, locs2, k=np.pi/180):
     """
     locs1 = locs1 * k
     locs2 = locs2 * k
-    cos_lat1 = np.cos(locs1[..., 1])
-    cos_lat2 = np.cos(locs2[..., 1])
-    cos_lat_d = np.cos(locs1[..., 1] - locs2[..., 1])
-    cos_lon_d = np.cos(locs1[..., 0] - locs2[..., 0])
+    cos_lat1 = np.cos(locs1[..., 0])
+    cos_lat2 = np.cos(locs2[..., 0])
+    cos_lat_d = np.cos(locs1[..., 0] - locs2[..., 0])
+    cos_lon_d = np.cos(locs1[..., 1] - locs2[..., 1])
     return 6367000 * np.arccos(cos_lat_d - cos_lat1 * cos_lat2 * (1 - cos_lon_d))
 
 
@@ -338,10 +338,9 @@ class SmoothStewart:
     def __init__(self, input_layer, variable_name, span, beta,
                  typefct='exponential', resolution=None,
                  variable_name2=None, mask=None, **kwargs):
-        self.longlat = kwargs.get("distGeo", kwargs.get("longlat", False))
+        self.longlat = kwargs.get("distGeo", kwargs.get("longlat", True))
         self.gdf = input_layer if isinstance(input_layer, GeoDataFrame) else \
             GeoDataFrame.from_file(input_layer).to_crs(crs="+proj=natearth")
-        self.gdf = self.gdf[self.gdf[variable_name].notnull()]
         self.info = (
             'SmoothStewart - variable : {}{} ({} features)\n'
             'beta : {} - span : {} - function : {}'
@@ -370,6 +369,8 @@ class SmoothStewart:
         self.info2 = ""
         self.info3 = "Clipping mask: {}".format(self.use_mask)
 
+        self.gdf = self.gdf[self.gdf[variable_name].notnull()]
+        self.gdf[variable_name] = self.gdf[variable_name].astype(float)
         self.compute_pot(variable_name, span, beta,
                          variable_name2=variable_name2,
                          resolution=resolution,
@@ -400,6 +401,7 @@ class SmoothStewart:
                     resolution=None, typefct="exponential",
                     variable_name2=None):
         knownpts = self.gdf
+
         if self.use_mask:
             bounds = self.mask.total_bounds
         else:
