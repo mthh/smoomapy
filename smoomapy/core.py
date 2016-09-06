@@ -28,7 +28,7 @@ def quick_stewart(input_geojson_points, variable_name, span,
                   beta=2, typefct='exponential',
                   nb_class=None, resolution=None, mask=None,
                   user_defined_breaks=None, variable_name2=None,
-                  output="GeoJSON"):
+                  output="GeoJSON", **kwargs):
     """
     Main function, acting as a one-shot wrapper around SmoothStewart object.
     Read a file of point values and optionnaly a mask file,
@@ -86,8 +86,9 @@ def quick_stewart(input_geojson_points, variable_name, span,
                                    span=12500, beta=3, typefct="pareto",
                                    output="GeoDataFrame")
     """
+    distGeo = kwargs.get("distGeo", kwargs.get("longlat", True))
     StePot = SmoothStewart(input_geojson_points, variable_name, span,
-                           beta, typefct, resolution, None, mask)
+                           beta, typefct, resolution, None, mask, distGeo=distGeo)
     return StePot.render(nb_class=nb_class,
                          user_defined_breaks=user_defined_breaks,
                          output=output)
@@ -339,26 +340,30 @@ class SmoothStewart:
                  typefct='exponential', resolution=None,
                  variable_name2=None, mask=None, **kwargs):
         self.longlat = kwargs.get("distGeo", kwargs.get("longlat", True))
-        self.gdf = input_layer if isinstance(input_layer, GeoDataFrame) else \
-            GeoDataFrame.from_file(input_layer).to_crs(crs="+proj=natearth")
+        self.gdf = input_layer if isinstance(input_layer, GeoDataFrame) \
+            else GeoDataFrame.from_file(input_layer)
+        self.proj_robinson = """+proj=robin +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"""
+        self.proj_nat_earth = """+proj=natearth"""
         self.info = (
             'SmoothStewart - variable : {}{} ({} features)\n'
             'beta : {} - span : {} - function : {}'
             ).format(variable_name,
                      " / {}".format(variable_name2) if variable_name2 else "",
                      len(self.gdf), beta, span, typefct)
-
+        self.gdf.to_crs(crs="+proj=natearth", inplace=True)
         if mask is not None:
             if isinstance(mask, GeoDataFrame):
                 self.mask = mask
             elif isinstance(mask, str) and isinstance(input_layer, str) \
                     and mask == input_layer:
-                self.mask = self.gdf
+                self.mask = self.gdf.copy()
             else:
-                self.mask = GeoDataFrame.from_file(mask
-                    ).to_crs(crs="+proj=natearth")
-            if len(set(self.mask.type
-                       ).intersection({"Polygon", "MultiPolygon"})) > 0 \
+                self.mask = GeoDataFrame.from_file(mask)
+
+            self.mask.to_crs(crs="+proj=natearth", inplace=True)
+
+            if len(set(self.mask.type)
+                    .intersection({"Polygon", "MultiPolygon"})) > 0 \
                     and self.gdf.crs == self.mask.crs:
                 self.use_mask = True
             else:
@@ -366,11 +371,28 @@ class SmoothStewart:
         else:
             self.use_mask = False
 
+        self.poly_max_extend = Polygon(
+            [(-9602645.20918163, 9072201.505771412) ,
+             (0.0, 9072201.505771412) ,
+             (9602645.20918163, 9072201.505771412) ,
+             (17446658.417140715, 0.0) ,
+             (9602645.20918163, -9072201.505771412) ,
+             (0.0, -9072201.518061588) ,
+             (-9602645.20918163, -9072201.505771412) ,
+             (-17446658.417140715, 0.0) ,
+             (-9602645.20918163, 9072201.505771412) ,
+            ])
+
         self.info2 = ""
         self.info3 = "Clipping mask: {}".format(self.use_mask)
 
+        self.gdf.loc[:,variable_name] = self.gdf[variable_name].astype(float)
         self.gdf = self.gdf[self.gdf[variable_name].notnull()]
-        self.gdf[variable_name] = self.gdf[variable_name].astype(float)
+
+        if variable_name2:
+            self.gdf.loc[:,variable_name2] = self.gdf[variable_name2].astype(float)
+            self.gdf = self.gdf[self.gdf[variable_name2].notnull()]
+
         self.compute_pot(variable_name, span, beta,
                          variable_name2=variable_name2,
                          resolution=resolution,
@@ -434,16 +456,13 @@ class SmoothStewart:
             natearth = pyproj.Proj("+proj=natearth")
             wgs84 = pyproj.Proj("+init=EPSG:4326")
 
-            prep_mask = prep(Polygon([(-179.9999, 89.9999),
-                                      (179.9999, 89.9999),
-                                     (179.9999, -89.9999),
-                                     (-179.9999, -89.9999),
-                                     (-179.9999, 89.9999)]))
+            prep_mask = prep(self.poly_max_extend)
+
             idx = Idx()
-            self.geo_unknownpts = np.array([[i[1], i[0]] for n, i in enumerate(zip(
-                *pyproj.transform(natearth, wgs84,
-                                  [i[0] for i in self.unknownpts],
-                                  [i[1] for i in self.unknownpts])))
+            self.geo_unknownpts = np.array([[i[1], i[0]] for n, i in enumerate(
+                zip(*pyproj.transform(natearth, wgs84,
+                                      [i[0] for i in self.unknownpts],
+                                      [i[1] for i in self.unknownpts])))
                 if prep_mask.contains(Point(i)) and idx.add(n)])
 
             self.unknownpts = self.unknownpts[idx.values]
@@ -461,8 +480,7 @@ class SmoothStewart:
             self.pot2 = (
                 knownpts[variable_name2].values[:, np.newaxis] * self.mat_dens
                 ).sum(axis=0)
-            self.pot = (np.true_divide(self.pot1, self.pot2)
-                ).round(8)
+            self.pot = (np.true_divide(self.pot1, self.pot2)).round(8)
             _nan_mask = np.argwhere(~np.isnan(self.pot)).reshape(-1)
             self.pot = self.pot[_nan_mask]
             self.unknownpts = self.unknownpts[_nan_mask]
@@ -602,16 +620,20 @@ class SmoothStewart:
         res.crs = self.gdf.crs
         res["min"] = [np.nanmin(self.pot)] + res["max"][0:len(res)-1].tolist()
         res["center"] = (res["min"] + res["max"]) / 2
-
+        ix_max_ft = len(res) - 1
         if self.use_mask:
-            res.geometry = res.geometry.buffer(
+            res.loc[0:ix_max_ft ,"geometry"] = res.geometry.buffer(
                 0).intersection(unary_union(self.mask.geometry.buffer(0)))
-            # Repair geometries if necessary :
-            if not all(t == "MultiPolygon" or t == "Polygon" for t in res.geom_type):
-                res.geometry = \
-                    [geom if geom.type == "MultiPolygon" else MultiPolygon(
-                         [j for j in geom if j.type in ('Polygon', 'MultiPolygon')])
-                     for geom in res.geometry]
-        return res.to_crs({'init': 'epsg:4326'}).to_json().encode() \
-            if "geojson" in output.lower() \
-            else res.to_crs({'init': 'epsg:4326'})
+
+        res.loc[0:ix_max_ft ,"geometry"] = res.geometry.buffer(
+            0).intersection(self.poly_max_extend.buffer(-0.1))
+        # Repair geometries if necessary :
+        if not all(t == "MultiPolygon" or t == "Polygon" for t in res.geom_type):
+            res.loc[0:ix_max_ft ,"geometry"] = \
+                [geom if geom.type == "MultiPolygon" else MultiPolygon(
+                     [j for j in geom if j.type in ('Polygon', 'MultiPolygon')])
+                 for geom in res.geometry]
+
+        res.to_crs({'init': 'epsg:4326'}, inplace=True)
+
+        return res.to_json().encode() if "geojson" in output.lower() else res
