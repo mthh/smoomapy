@@ -162,7 +162,6 @@ def make_regular_points(bounds, resolution):
     nb_x = int(round((xmax - xmin) / resolution))
     nb_y = int(round((ymax - ymin) / resolution))
 
-#    try:
     prog_x = \
         [xmin + (resolution * i) for i in range(nb_x + 1)]
     prog_y = \
@@ -371,6 +370,7 @@ class SmoothStewart:
         else:
             self.use_mask = False
 
+        # Approx. maximum extend we can reach with "nat-earth" projection :
         self.poly_max_extend = Polygon(
             [(-9602645.20918163, 9072201.505771412) ,
              (0.0, 9072201.505771412) ,
@@ -603,6 +603,8 @@ class SmoothStewart:
             rbf = Rbf(self.x, self.y, pot, epsilon=2)
             XI, YI = np.meshgrid(self.xi, self.yi)
             self.zi = rbf(XI, YI)
+        else:
+            raise ValueError("Invalid interpolation function name provided")
 
         if user_defined_breaks:
             levels = user_defined_breaks

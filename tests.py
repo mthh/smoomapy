@@ -153,5 +153,21 @@ class TestSmoothStewart(unittest.TestCase):
         self.assertIsInstance(result, GeoDataFrame)
         self.assertEqual(len(result), 9)
 
+    def test_errors(self):
+        StePot = SmoothStewart("misc/nuts3_data.geojson", "gdppps2008",
+                               span=65000, beta=2, resolution=48000)
+        with self.assertRaises(ValueError):
+            StePot.render(9, "foo", output="Geodataframe")
+        with self.assertRaises(ValueError):
+            StePot.render(9, "equal_interval", func_grid="foo")
+
+        gdf = GeoDataFrame.from_file("misc/nuts3_data.geojson")
+        gdf.crs = ""
+        with self.assertRaises(Exception):
+            SmoothStewart(gdf, "gdppps2008",
+                          span=65000, beta=2, resolution=48000,
+                          variable2="gdppps2008")
+
+
 if __name__ == "__main__":
     unittest.main()
