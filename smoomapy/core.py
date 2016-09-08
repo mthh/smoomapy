@@ -23,6 +23,8 @@ except:
     jenks_breaks = None
 from .helpers_classif import get_opt_nb_class, maximal_breaks, head_tail_breaks
 
+import logging
+logger = logging.getLogger("smoomapy.core")
 
 def quick_stewart(input_geojson_points, variable_name, span,
                   beta=2, typefct='exponential',
@@ -114,29 +116,22 @@ def make_regular_points_with_no_res(bounds, nb_points=7560):
         The number of points on each dimension (width, height)
     """
     xmin, ymin, xmax, ymax = bounds
-    rows = int(nb_points**0.5)
-    cols = int(nb_points**0.5)
-    height = (ymax-ymin) / rows
-    width = (xmax-xmin) / cols
-    x_left_origin = xmin
-    x_right_origin = xmin + width
-    y_top_origin = ymax
-    y_bottom_origin = ymax - height
+    nb_x = int(nb_points**0.5)
+    nb_y = int(nb_points**0.5)
 
-    res_geoms = []
-    for countcols in range(cols):
-        y_top = y_top_origin
-        y_bottom = y_bottom_origin
-        for countrows in range(rows):
-            res_geoms.append([
-                (x_left_origin + x_right_origin) / 2, (y_top + y_bottom) / 2
-                ])
-            y_top = y_top - height
-            y_bottom = y_bottom - height
-        x_left_origin = x_left_origin + width
-        x_right_origin = x_right_origin + width
+    height = (ymax-ymin) / (nb_y - 2)
+    width = (xmax-xmin) / (nb_x - 2)
 
-    return (np.array(res_geoms), (cols, rows))
+    x_start = xmin - width
+    y_start = ymin - height
+
+    prog_x = \
+        [x_start + (width * i) for i in range(nb_x + 1)]
+    prog_y = \
+        [y_start + (height * i) for i in range(nb_y + 1)]
+
+    return (np.array([(x, y) for x in prog_x for y in prog_y]),
+            (len(prog_x), len(prog_y)))
 
 
 def make_regular_points(bounds, resolution):
@@ -162,10 +157,19 @@ def make_regular_points(bounds, resolution):
     nb_x = int(round((xmax - xmin) / resolution))
     nb_y = int(round((ymax - ymin) / resolution))
 
+    height = (ymax-ymin) / nb_y
+    width = (xmax-xmin) / nb_x
+    x_start = xmin - width
+    y_start = ymin - height
+
+    nb_x += 2
+    nb_y += 2
+
+
     prog_x = \
-        [xmin + (resolution * i) for i in range(nb_x + 1)]
+        [x_start + (resolution * i) for i in range(nb_x + 1)]
     prog_y = \
-        [ymin + (resolution * i) for i in range(nb_y + 1)]
+        [y_start + (resolution * i) for i in range(nb_y + 1)]
 
     return (np.array([(x, y) for x in prog_x for y in prog_y]),
             (len(prog_x), len(prog_y)))
@@ -425,13 +429,12 @@ class SmoothStewart:
         knownpts = self.gdf
 
         if self.use_mask:
-            bounds = self.mask.total_bounds
+            bounds = self.mask.buffer(10).total_bounds
         else:
-            tmp = (
-                ((knownpts.total_bounds[2] - knownpts.total_bounds[0])/10) +
-                ((knownpts.total_bounds[3] - knownpts.total_bounds[1])/10)
-                ) / 2
-            tmp = span if tmp < span else tmp
+            tmp = np.max(
+                [(knownpts.total_bounds[2] - knownpts.total_bounds[0])/10,
+                 (knownpts.total_bounds[3] - knownpts.total_bounds[1])/10])
+            tmp = span * 1.5 if tmp < span * 1.5 else tmp
 #            bounds = check_bounds(*knownpts.buffer(tmp).total_bounds)
             bounds = knownpts.buffer(tmp).total_bounds
 
@@ -622,6 +625,7 @@ class SmoothStewart:
         res.crs = self.gdf.crs
         res["min"] = [np.nanmin(self.pot)] + res["max"][0:len(res)-1].tolist()
         res["center"] = (res["min"] + res["max"]) / 2
+
         ix_max_ft = len(res) - 1
         if self.use_mask:
             res.loc[0:ix_max_ft ,"geometry"] = res.geometry.buffer(
@@ -632,7 +636,7 @@ class SmoothStewart:
         # Repair geometries if necessary :
         if not all(t == "MultiPolygon" or t == "Polygon" for t in res.geom_type):
             res.loc[0:ix_max_ft ,"geometry"] = \
-                [geom if geom.type == "MultiPolygon" else MultiPolygon(
+                [geom if geom.type in ("Polygon", "MultiPolygon") else MultiPolygon(
                      [j for j in geom if j.type in ('Polygon', 'MultiPolygon')])
                  for geom in res.geometry]
 
