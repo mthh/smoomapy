@@ -18,13 +18,12 @@ from shapely.prepared import prep
 from shapely.ops import unary_union
 from geopandas import GeoDataFrame
 try:
-    from jenksPy import jenks_breaks
+    from jenkspy import jenks_breaks
 except:
     jenks_breaks = None
 from .helpers_classif import get_opt_nb_class, maximal_breaks, head_tail_breaks
 
-import logging
-logger = logging.getLogger("smoomapy.core")
+
 
 def quick_stewart(input_geojson_points, variable_name, span,
                   beta=2, typefct='exponential',
