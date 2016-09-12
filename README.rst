@@ -4,7 +4,7 @@ smoomapy
 Make smoothed maps in your python environnement
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-|Build Status| |Version|
+|Build Status| |Version| |Coveralls|
 
 More or less a python port of *Stewart method* from R SpatialPositon
 package (https://github.com/Groupe-ElementR/SpatialPosition/). |br| Allow to
@@ -114,5 +114,8 @@ From github :
 
 .. |Version| image:: https://img.shields.io/pypi/v/smoomapy.svg
    :target: https://pypi.python.org/pypi/smoomapy
+
+.. |Coveralls| image:: https://coveralls.io/repos/github/mthh/smoomapy/badge.svg
+   :target: https://coveralls.io/github/mthh/smoomapy
 
 .. |br| raw:: html
