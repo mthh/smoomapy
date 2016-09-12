@@ -11,12 +11,15 @@ from math import floor, log10
 def head_tail_breaks(values, direction="head"):
     return HeadTailBreaks(values, direction).bins
 
+
 def maximal_breaks(values, k=None, diffmin=0):
     k = k if k else get_opt_nb_class(len(values))
     return [min(values)] + MaximalBreaks(values, k, diffmin).bins.tolist()
 
+
 def get_opt_nb_class(len_values):
     return floor(1 + 3.3 * log10(len_values))
+
 
 def _chain(*lists):
     for li in lists:
@@ -28,6 +31,7 @@ class HeadTailBreaks:
     def __init__(self, values, direction="head"):
         self.values = values if isinstance(values, np.ndarray) \
             else np.array(values)
+
         if "head" in direction:
             self.bins = [self.values.min()]
             self.operator = ge
@@ -40,13 +44,18 @@ class HeadTailBreaks:
 
         self.cut_head_tail_break(self.values)
         self.nb_class = len(self.bins) - 1
+
+        if "tail" in direction:
+            self.bins = list(reversed(self.bins))
+
         return None
 
     def cut_head_tail_break(self, values):
         mean = values.mean()
         self.bins.append(mean)
         if len(values) > 1:
-            return self.cut_head_tail_break(values[self.operator(values, mean)])
+            return self.cut_head_tail_break(
+                values[self.operator(values, mean)])
         return None
 
 
@@ -68,7 +77,8 @@ class MaximalBreaks:
             diffs = diffs[-k1:]
 
         self.bins = np.array(
-             [((sorted_copy[_id] + sorted_copy[_id + 1]) / 2.0)[0] for diff in diffs
+             [((sorted_copy[_id] + sorted_copy[_id + 1]) / 2.0)[0]
+              for diff in diffs
               for _id in np.nonzero(d == diff)] + [sorted_copy[-1]]
             )
         self.bins.sort()

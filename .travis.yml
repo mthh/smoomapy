@@ -20,11 +20,11 @@ before_install:
   - export PATH=$GDALINST/gdal-2.1.0/bin:$PATH
   - export LD_LIBRARY_PATH=$GDALINST/gdal-2.1.0/lib:$LD_LIBRARY_PATH
 install:
-  - pip install --upgrade setuptools pip
+  - pip install --upgrade setuptools pip coveralls
   - pip install -r requirements.txt
   - python setup.py install
 script:
-  - python setup.py test
+  - coverage run --source smoomapy setup.py test
 addons:
   apt:
     sources:
@@ -36,3 +36,4 @@ addons:
       - libproj-dev
       - python-numpy
       - python3-numpy
+after_success: coveralls

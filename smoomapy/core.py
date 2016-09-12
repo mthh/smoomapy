@@ -17,12 +17,12 @@ from shapely.geometry import Polygon, MultiPolygon, Point
 from shapely.prepared import prep
 from shapely.ops import unary_union
 from geopandas import GeoDataFrame
+from io import BytesIO, StringIO
 try:
     from jenkspy import jenks_breaks
 except:
     jenks_breaks = None
 from .helpers_classif import get_opt_nb_class, maximal_breaks, head_tail_breaks
-
 
 
 def quick_stewart(input_geojson_points, variable_name, span,
@@ -89,7 +89,8 @@ def quick_stewart(input_geojson_points, variable_name, span,
     """
     distGeo = kwargs.get("distGeo", kwargs.get("longlat", True))
     StePot = SmoothStewart(input_geojson_points, variable_name, span,
-                           beta, typefct, resolution, None, mask, distGeo=distGeo)
+                           beta, typefct, resolution,
+                           None, mask, distGeo=distGeo)
     return StePot.render(nb_class=nb_class,
                          user_defined_breaks=user_defined_breaks,
                          output=output)
@@ -164,7 +165,6 @@ def make_regular_points(bounds, resolution):
     nb_x += 2
     nb_y += 2
 
-
     prog_x = \
         [x_start + (resolution * i) for i in range(nb_x + 1)]
     prog_y = \
@@ -227,13 +227,12 @@ def hav_dist(locs1, locs2, k=np.pi/180):
     cos_lon_d = np.cos(locs1[..., 1] - locs2[..., 1])
     return 6367000 * np.arccos(cos_lat_d - cos_lat1 * cos_lat2 * (1 - cos_lon_d))
 
-
-def check_bounds(xmin, ymin, xmax, ymax):
-    if ymin < -9072187:
-        ymin = -9072187
-    if ymax > 9072187.8573143743:
-        ymax = 9072187.8573143743
-    return xmin, ymin, xmax, ymax
+#def check_bounds(xmin, ymin, xmax, ymax):
+#    if ymin < -9072187:
+#        ymin = -9072187
+#    if ymax > 9072187.8573143743:
+#        ymax = 9072187.8573143743
+#    return xmin, ymin, xmax, ymax
 
 
 def isopoly_to_gdf(collec_poly, levels, field_name="levels"):
@@ -277,19 +276,22 @@ def isopoly_to_gdf(collec_poly, levels, field_name="levels"):
             polygons.append(mpoly[0])
             data.append(levels[i])
 
-    if len(data) == len(polygons):
-        return GeoDataFrame(geometry=polygons,
-                            data=data,
-                            columns=[field_name])
-    else:
-        return GeoDataFrame(geometry=polygons)
+#    if len(data) == len(polygons):
+    return GeoDataFrame(geometry=polygons,
+                        data=data,
+                        columns=[field_name])
+#    else:
+#        return GeoDataFrame(geometry=polygons)
+
 
 class Idx:
     def __init__(self):
         self.values = []
+
     def add(self, value):
         self.values.append(value)
         return True
+
 
 class SmoothStewart:
     """
@@ -375,25 +377,26 @@ class SmoothStewart:
 
         # Approx. maximum extend we can reach with "nat-earth" projection :
         self.poly_max_extend = Polygon(
-            [(-9602645.20918163, 9072201.505771412) ,
-             (0.0, 9072201.505771412) ,
-             (9602645.20918163, 9072201.505771412) ,
-             (17446658.417140715, 0.0) ,
-             (9602645.20918163, -9072201.505771412) ,
-             (0.0, -9072201.518061588) ,
-             (-9602645.20918163, -9072201.505771412) ,
-             (-17446658.417140715, 0.0) ,
-             (-9602645.20918163, 9072201.505771412) ,
-            ])
+            [(-9602645.20918163, 9072201.505771412),
+             (0.0, 9072201.505771412),
+             (9602645.20918163, 9072201.505771412),
+             (17446658.417140715, 0.0),
+             (9602645.20918163, -9072201.505771412),
+             (0.0, -9072201.518061588),
+             (-9602645.20918163, -9072201.505771412),
+             (-17446658.417140715, 0.0),
+             (-9602645.20918163, 9072201.505771412)
+             ])
 
         self.info2 = ""
         self.info3 = "Clipping mask: {}".format(self.use_mask)
 
-        self.gdf.loc[:,variable_name] = self.gdf[variable_name].astype(float)
+        self.gdf.loc[:, variable_name] = self.gdf[variable_name].astype(float)
         self.gdf = self.gdf[self.gdf[variable_name].notnull()]
 
         if variable_name2:
-            self.gdf.loc[:,variable_name2] = self.gdf[variable_name2].astype(float)
+            self.gdf.loc[:, variable_name2] = \
+                self.gdf[variable_name2].astype(float)
             self.gdf = self.gdf[self.gdf[variable_name2].notnull()]
 
         self.compute_pot(variable_name, span, beta,
@@ -580,7 +583,10 @@ class SmoothStewart:
         if new_mask is None:
             self.use_mask = False
             self.mask = None
-        elif new_mask:
+        elif isinstance(new_mask, GeoDataFrame):
+            self.use_mask = True
+            self.mask = new_mask.to_crs(crs="+proj=natearth")
+        elif isinstance(new_mask, (str, BytesIO, StringIO)):
             self.use_mask = True
             self.mask = GeoDataFrame.from_file(
                 new_mask).to_crs(crs="+proj=natearth")
@@ -601,10 +607,10 @@ class SmoothStewart:
             self.zi = mlab_griddata(self.x, self.y, pot,
                                     self.xi, self.yi, interp='linear'
                                     ).round(8)
-        elif func_grid == "rbf":
-            rbf = Rbf(self.x, self.y, pot, epsilon=2)
-            XI, YI = np.meshgrid(self.xi, self.yi)
-            self.zi = rbf(XI, YI)
+#        elif func_grid == "rbf":
+#            rbf = Rbf(self.x, self.y, pot, epsilon=2)
+#            XI, YI = np.meshgrid(self.xi, self.yi)
+#            self.zi = rbf(XI, YI).round(8)
         else:
             raise ValueError("Invalid interpolation function name provided")
 
@@ -627,16 +633,18 @@ class SmoothStewart:
 
         ix_max_ft = len(res) - 1
         if self.use_mask:
-            res.loc[0:ix_max_ft ,"geometry"] = res.geometry.buffer(
+            res.loc[0:ix_max_ft, "geometry"] = res.geometry.buffer(
                 0).intersection(unary_union(self.mask.geometry.buffer(0)))
 
-        res.loc[0:ix_max_ft ,"geometry"] = res.geometry.buffer(
+        res.loc[0:ix_max_ft, "geometry"] = res.geometry.buffer(
             0).intersection(self.poly_max_extend.buffer(-0.1))
         # Repair geometries if necessary :
         if not all(t == "MultiPolygon" or t == "Polygon" for t in res.geom_type):
-            res.loc[0:ix_max_ft ,"geometry"] = \
-                [geom if geom.type in ("Polygon", "MultiPolygon") else MultiPolygon(
-                     [j for j in geom if j.type in ('Polygon', 'MultiPolygon')])
+            res.loc[0:ix_max_ft, "geometry"] = \
+                [geom if geom.type in ("Polygon", "MultiPolygon")
+                 else MultiPolygon(
+                     [j for j in geom if j.type in ('Polygon', 'MultiPolygon')]
+                     )
                  for geom in res.geometry]
 
         res.to_crs({'init': 'epsg:4326'}, inplace=True)
