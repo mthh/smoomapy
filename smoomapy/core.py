@@ -416,7 +416,7 @@ class SmoothStewart:
 
     def _compute_interact_density(self, matdist, typefun, beta, span):
         if 'pareto' in typefun:
-            alpha = (2 ** (1 / beta) - 1) / span
+            alpha = (2.0 ** (1.0 / beta) - 1.0) / span
             self.mat_dens = (1 + alpha * matdist) ** (-beta)
         elif 'exponential' in typefun:
             alpha = np.log(2) / span ** beta

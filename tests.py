@@ -137,12 +137,12 @@ class TestSmoothStewart(unittest.TestCase):
         StePot = SmoothStewart(gdf, "gdppps2008", typefct="pareto",
                                span=65000, beta=2, resolution=48000,
                                mask=None)
-        result = StePot.render(6, "equal_interval", output="Geodataframe")
+        result = StePot.render(6, output="Geodataframe")
         self.assertIsInstance(result, GeoDataFrame)
         self.assertEqual(len(result), 6)
 
         # Finally, use a mask (from a file) :
-        result = StePot.render(5, "equal_interval", output="Geodataframe",
+        result = StePot.render(5, output="Geodataframe",
                                new_mask="misc/nuts3_data.geojson")
         self.assertIsInstance(result, GeoDataFrame)
         self.assertEqual(len(result), 5)
@@ -150,16 +150,16 @@ class TestSmoothStewart(unittest.TestCase):
         # Or from a GeoDataFrame :
         gdf.geometry = gdf.geometry.buffer(100)
 
-        result = StePot.render(6, "equal_interval", output="Geodataframe",
+        result = StePot.render(6, output="Geodataframe",
                                new_mask=gdf)
         self.assertIsInstance(result, GeoDataFrame)
         self.assertEqual(len(result), 6)
 
         # Nope, no mask :
-        result = StePot.render(9, "equal_interval", output="Geodataframe",
+        result = StePot.render(5, output="Geodataframe",
                                new_mask=None)
         self.assertIsInstance(result, GeoDataFrame)
-        self.assertEqual(len(result), 9)
+        self.assertEqual(len(result), 5)
 
     def test_input_with_missing_values(self):
         gdf = GeoDataFrame.from_file("misc/nuts3_data.geojson").to_crs({"init": "epsg:4326"})
