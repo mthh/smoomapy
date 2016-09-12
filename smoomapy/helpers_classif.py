@@ -74,7 +74,7 @@ class MaximalBreaks:
         diffs = np.unique(d[np.nonzero(d > self.diffmin)])
         k1 = self.k - 1
         if len(diffs) > k1:
-            diffs = diffs[-k1:]
+            diffs = diffs[-int(k1):]
 
         self.bins = np.array(
              [((sorted_copy[_id] + sorted_copy[_id + 1]) / 2.0)[0]
