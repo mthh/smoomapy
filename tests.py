@@ -18,7 +18,7 @@ class TestSmoothStewart(unittest.TestCase):
         # Exports correctly to `bytes`:
         res = quick_stewart(
             "misc/nuts3_data.geojson", "pop2008",
-            span=65000, beta=2, resolution=55000, nb_class=8,
+            span=65000, beta=2, resolution=60000, nb_class=8,
             mask="misc/nuts3_data.geojson")
         self.assertIsInstance(res, bytes)
 
@@ -26,7 +26,7 @@ class TestSmoothStewart(unittest.TestCase):
         # and respects the choosen number of class:
         res = quick_stewart(
             "misc/nuts3_data.geojson", "pop2008",
-            span=65000, beta=2, resolution=55000, nb_class=8,
+            span=65000, beta=2, resolution=60000, nb_class=8,
             mask="misc/nuts3_data.geojson", output="GeoDataFrame")
         self.assertIsInstance(res, GeoDataFrame)
         self.assertEqual(len(res), 8)
@@ -48,7 +48,7 @@ class TestSmoothStewart(unittest.TestCase):
             "pop2008",
             span=65000,
             beta=2,
-            resolution=55000,
+            resolution=60000,
             user_defined_breaks=my_breaks,
             mask="misc/nuts3_data.geojson",
             output="GeoDataFrame")
@@ -61,8 +61,9 @@ class TestSmoothStewart(unittest.TestCase):
     def test_object_stewart(self):
         # Test the OO approach for building smoothed map with stewart potentials
         StePot = SmoothStewart("misc/nuts3_data.geojson", "pop2008",
-                               span=65000, beta=2, resolution=48000,
+                               span=65000, beta=2, resolution=60000,
                                mask="misc/nuts3_data.geojson")
+
         # Test using percentiles :
         result = StePot.render(nb_class=10,
                                disc_func="percentiles",
@@ -81,26 +82,31 @@ class TestSmoothStewart(unittest.TestCase):
         # Test using somes already choosed break values :
         my_breaks = [0, 1697631, 3395263, 5092894, 6790526,
                      8488157, 10185789, 11883420, 13581052]
-        result = StePot.render(nb_class=48,  # bogus values as `nb_class` and
-                               disc_func="foobar",  # ... disc_func should be overrided
-                               user_defined_breaks=my_breaks,  # ... by the `user_defined_breaks` params
-                               output="geodataframe")         # ... and this is what we are testing here
+        result = StePot.render(
+            nb_class=48,  # bogus values as `nb_class` and
+            disc_func="foobar",  # ... disc_func should be overrided
+            user_defined_breaks=my_breaks,  # ... by the `user_defined_breaks` params
+            output="geodataframe")         # ... and this is what we are testing here
+
         self.assertIsInstance(result, GeoDataFrame)
         self.assertEqual(len(result), 8)
         # Assert these break values were actually used :
         for wanted_break, obtained_break in zip(my_breaks[1:-1], result["max"][:-1]):
             self.assertAlmostEqual(wanted_break, obtained_break)
 
-        # Some tests on an other variables for testing another discretization method :
-        StePot = SmoothStewart("misc/nuts3_data.geojson", "gdppps2008",
-                               span=65000, beta=2, resolution=48000,
-                               mask="misc/nuts3_data.geojson")
-        # Using "head tail breaks" (should define automatically the number of class)
+        # Test again using another discretization method : "head tail breaks"
+        # (should define automatically the number of class)
         result = StePot.render(nb_class=None,
                                disc_func="head_tail",
                                output="geodataframe")
         self.assertIsInstance(result, GeoDataFrame)
 
+        # Test that the object has a nice representation :
+        a = str(StePot)
+        b = repr(StePot)
+        self.assertEqual(a, b)
+        self.assertIn("SmoothStewart - variable :", a)
+        self.assertIn("{} features".format(len(StePot.gdf)), a)
 
     def test_object_stewart_two_var(self):
         # Test the OO approach with two variables :
@@ -145,6 +151,7 @@ class TestSmoothStewart(unittest.TestCase):
         result = StePot.render(5, output="Geodataframe",
                                new_mask="misc/nuts3_data.geojson")
         self.assertIsInstance(result, GeoDataFrame)
+        self.assertEqual(StePot.use_mask, True)
         self.assertEqual(len(result), 5)
 
         # Or from a GeoDataFrame :
@@ -153,12 +160,24 @@ class TestSmoothStewart(unittest.TestCase):
         result = StePot.render(6, output="Geodataframe",
                                new_mask=gdf)
         self.assertIsInstance(result, GeoDataFrame)
+        self.assertEqual(StePot.use_mask, True)
         self.assertEqual(len(result), 6)
 
         # Nope, no mask :
         result = StePot.render(5, output="Geodataframe",
                                new_mask=None)
         self.assertIsInstance(result, GeoDataFrame)
+        self.assertEqual(StePot.use_mask, False)
+        self.assertEqual(len(result), 5)
+
+        # Test that it skips the mask parameter if the layer provided as a mask
+        # is not a Polygon/MultiPolygon layer :
+        gdf_mask = gdf[1:50].copy()
+        gdf_mask.geometry = gdf_mask.geometry.centroid
+        result = StePot.render(5, output="Geodataframe",
+                               new_mask=gdf_mask)
+        self.assertIsInstance(result, GeoDataFrame)
+        self.assertEqual(StePot.use_mask, False)
         self.assertEqual(len(result), 5)
 
     def test_input_with_missing_values(self):
@@ -177,7 +196,7 @@ class TestSmoothStewart(unittest.TestCase):
         gdf.loc[25:35, "pop2008"] = np.NaN
         gdf.loc[0:len(gdf)-1, "pop2008"] = gdf["pop2008"].astype(str)
         StePot = SmoothStewart(gdf, "gdppps2008",
-                               span=65000, beta=2, resolution=48000,
+                               span=65000, beta=2, resolution=60000,
                                mask="misc/nuts3_data.geojson")
         result = StePot.render(9, "equal_interval", output="Geodataframe")
         self.assertIsInstance(result, GeoDataFrame)
@@ -191,7 +210,8 @@ class TestSmoothStewart(unittest.TestCase):
                                    typefct="abcdefg")
 
         StePot = SmoothStewart("misc/nuts3_data.geojson", "gdppps2008",
-                               span=65000, beta=2, resolution=48000)
+                               span=65000, beta=2, resolution=60000)
+
         # Test with a wrong discretization function name :
         with self.assertRaises(ValueError):
             StePot.render(9, "foo", output="Geodataframe")
@@ -210,8 +230,9 @@ class TestSmoothStewart(unittest.TestCase):
 
     def test_mod_shape_interpolation_grid(self):
         StePot = SmoothStewart("misc/nuts3_data.geojson", "pop2008",
-                               span=80000, beta=2, resolution=75000,
+                               span=65000, beta=2, resolution=75000,
                                mask="misc/nuts3_data.geojson")
+
         # First rendering :
         StePot.render(nb_class=8,
                       disc_func="percentiles",

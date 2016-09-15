@@ -1,16 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-More or less a python port of Stewart method
-from R SpatialPositon package (https://github.com/Groupe-ElementR/SpatialPosition/)
-Allow to set a desired number of class and choose discretization method
-  or directly set some custom breaks values.
+More or less a python port of Stewart method from R SpatialPositon package
+(https://github.com/Groupe-ElementR/SpatialPosition/).
 
 @author: mthh
 """
 import numpy as np
 import pyproj
-from scipy.interpolate import griddata as scipy_griddata, Rbf
+from scipy.interpolate import griddata as scipy_griddata
 from matplotlib.mlab import griddata as mlab_griddata
 from matplotlib.pyplot import contourf
 from shapely.geometry import Polygon, MultiPolygon, Point
@@ -47,16 +45,17 @@ def quick_stewart(input_geojson_points, variable_name, span,
     beta : float
         The beta!
     typefct : str, optionnal
-        The type of function in {"exponential", "pareto"} (default: "exponential")
+        The type of function in {"exponential", "pareto"} (default: "exponential").
     nb_class : int, default None
         The number of class, if unset will most likely be 8
         (default: None)
     resolution : int, optionnal
-        The resolution to use (in unit of the input file), if not set a resolution
-        will be used in order to make a grid containing around 7560 pts
-        (default: None).
+        The resolution to use (in unit of the input file), if not set a default
+        resolution will be used in order to make a grid containing around
+        7500 pts (default: None).
     mask : str, optionnal
-        Path to the file (Polygons only) to use as clipping mask (default: None).
+        Path to the file (Polygons only) to use as clipping mask,
+        can also be a GeoDataFrame (default: None).
     user_defined_breaks : list or tuple, optionnal
         A list of ordered break to use to construct the contours
         (override `nb_class` value if any, default: None).
@@ -65,8 +64,8 @@ def quick_stewart(input_geojson_points, variable_name, span,
         computed from this variable will be will be used as to divide
         values computed from the first variable (default: None)
     output : string, optionnal
-        The type of output expected (not case-sensitive) in {"GeoJSON", "GeoDataFrame"}
-        (default: "GeoJSON")
+        The type of output expected (not case-sensitive)
+        in {"GeoJSON", "GeoDataFrame"} (default: "GeoJSON").
 
     Returns
     -------
@@ -225,14 +224,8 @@ def hav_dist(locs1, locs2, k=np.pi/180):
     cos_lat2 = np.cos(locs2[..., 0])
     cos_lat_d = np.cos(locs1[..., 0] - locs2[..., 0])
     cos_lon_d = np.cos(locs1[..., 1] - locs2[..., 1])
-    return 6367000 * np.arccos(cos_lat_d - cos_lat1 * cos_lat2 * (1 - cos_lon_d))
-
-#def check_bounds(xmin, ymin, xmax, ymax):
-#    if ymin < -9072187:
-#        ymin = -9072187
-#    if ymax > 9072187.8573143743:
-#        ymax = 9072187.8573143743
-#    return xmin, ymin, xmax, ymax
+    return 6367000 * np.arccos(
+        cos_lat_d - cos_lat1 * cos_lat2 * (1 - cos_lon_d))
 
 
 def isopoly_to_gdf(collec_poly, levels, field_name="levels"):
@@ -248,7 +241,8 @@ def isopoly_to_gdf(collec_poly, levels, field_name="levels"):
     levels : array-like
         The value to use as attributes for the constructed GeoDataFrame.
     field_name : str
-        The name of the field to be fill by `levels` variable (default: "levels")
+        The name of the field to be fill by values contained in
+        `levels` variable (default: "levels").
 
     Returns
     -------
@@ -276,12 +270,9 @@ def isopoly_to_gdf(collec_poly, levels, field_name="levels"):
             polygons.append(mpoly[0])
             data.append(levels[i])
 
-#    if len(data) == len(polygons):
     return GeoDataFrame(geometry=polygons,
                         data=data,
                         columns=[field_name])
-#    else:
-#        return GeoDataFrame(geometry=polygons)
 
 
 class Idx:
@@ -311,11 +302,11 @@ class SmoothStewart:
     beta : float
         The beta!
     typefct : str, optionnal
-        The type of function in {"exponential", "pareto"} (default: "exponential")
+        The type of function in {"exponential", "pareto"} (default: "exponential").
     resolution : int, optionnal
-        The resolution to use (in unit of the input file), if not set a resolution
-        will be used in order to make a grid containing around 7560 pts
-        (default: None).
+        The resolution to use (in unit of the input file), if not set a default
+        resolution will be used in order to make a grid containing around
+        7500 pts (default: None).
     mask : str, optionnal
         Path to the file (Polygons only) to use as clipping mask (default: None).
     variable_name2 : str, optionnal
@@ -346,7 +337,9 @@ class SmoothStewart:
         self.longlat = kwargs.get("distGeo", kwargs.get("longlat", True))
         self.gdf = input_layer if isinstance(input_layer, GeoDataFrame) \
             else GeoDataFrame.from_file(input_layer)
-        self.proj_robinson = """+proj=robin +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"""
+        self.proj_robinson = (
+            """+proj=robin +lon_0=0 +x_0=0 +y_0=0 """
+            """+ellps=WGS84 +datum=WGS84 +units=m +no_defs""")
         self.proj_nat_earth = """+proj=natearth"""
         self.info = (
             'SmoothStewart - variable : {}{} ({} features)\n'
@@ -365,13 +358,7 @@ class SmoothStewart:
                 self.mask = GeoDataFrame.from_file(mask)
 
             self.mask.to_crs(crs="+proj=natearth", inplace=True)
-
-            if len(set(self.mask.type)
-                    .intersection({"Polygon", "MultiPolygon"})) > 0 \
-                    and self.gdf.crs == self.mask.crs:
-                self.use_mask = True
-            else:
-                self.use_mask = False
+            self.check_mask()
         else:
             self.use_mask = False
 
@@ -437,7 +424,6 @@ class SmoothStewart:
                 [(knownpts.total_bounds[2] - knownpts.total_bounds[0])/10,
                  (knownpts.total_bounds[3] - knownpts.total_bounds[1])/10])
             tmp = span * 1.5 if tmp < span * 1.5 else tmp
-#            bounds = check_bounds(*knownpts.buffer(tmp).total_bounds)
             bounds = knownpts.buffer(tmp).total_bounds
 
         self.unknownpts, self.shape = make_regular_points(bounds, resolution) \
@@ -545,6 +531,14 @@ class SmoothStewart:
 
         return levels
 
+    def check_mask(self):
+        if len(set(self.mask.type)
+                .intersection({"Polygon", "MultiPolygon"})) > 0 \
+                and self.gdf.crs == self.mask.crs:
+            self.use_mask = True
+        else:
+            self.use_mask = False
+
     def render(self, nb_class=8, disc_func=None, user_defined_breaks=None,
                func_grid="scipy", output="GeoJSON", new_mask=False):
         """
@@ -566,8 +560,12 @@ class SmoothStewart:
              "matplotlib" for matplotlib.mlab.griddata,
              "rbf" for scipy.interpolate.rbf, default: "scipy").
         output : string, optionnal
-            The type of output expected (not case-sensitive) in {"GeoJSON", "GeoDataFrame"}
-            (default: "GeoJSON").
+            The type of output expected (not case-sensitive)
+            in {"GeoJSON", "GeoDataFrame"} (default: "GeoJSON").
+        new_mask : str, optionnal
+            Use a new mask by giving the path to the file (Polygons only)
+            to use as clipping mask, can also be directly a GeoDataFrame
+            (default: False).
 
         Returns
         -------
@@ -586,10 +584,12 @@ class SmoothStewart:
         elif isinstance(new_mask, GeoDataFrame):
             self.use_mask = True
             self.mask = new_mask.to_crs(crs="+proj=natearth")
+            self.check_mask()
         elif isinstance(new_mask, (str, BytesIO, StringIO)):
             self.use_mask = True
             self.mask = GeoDataFrame.from_file(
                 new_mask).to_crs(crs="+proj=natearth")
+            self.check_mask()
 
         if func_grid == "scipy":
             self.zi = scipy_griddata((self.x, self.y), pot,
@@ -607,10 +607,6 @@ class SmoothStewart:
             self.zi = mlab_griddata(self.x, self.y, pot,
                                     self.xi, self.yi, interp='linear'
                                     ).round(8)
-#        elif func_grid == "rbf":
-#            rbf = Rbf(self.x, self.y, pot, epsilon=2)
-#            XI, YI = np.meshgrid(self.xi, self.yi)
-#            self.zi = rbf(XI, YI).round(8)
         else:
             raise ValueError("Invalid interpolation function name provided")
 
@@ -639,7 +635,7 @@ class SmoothStewart:
         res.loc[0:ix_max_ft, "geometry"] = res.geometry.buffer(
             0).intersection(self.poly_max_extend.buffer(-0.1))
         # Repair geometries if necessary :
-        if not all(t == "MultiPolygon" or t == "Polygon" for t in res.geom_type):
+        if not all(t in ("MultiPolygon", "Polygon") for t in res.geom_type):
             res.loc[0:ix_max_ft, "geometry"] = \
                 [geom if geom.type in ("Polygon", "MultiPolygon")
                  else MultiPolygon(
