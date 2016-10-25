@@ -31,9 +31,23 @@ install:
   - ps: if (-not(Test-Path($env:PYTHON))) { & misc\install.ps1 }
   - "python --version"
   - "python -c \"import struct; print(struct.calcsize('P') * 8)\""
-  - "pip install --disable-pip-version-check --user --upgrade pip"
-  - "pip install wheel"
-  - "pip install -r requirements.txt"
+
+  - ps: mkdir C:\build | out-null
+  - ps: mkdir C:\gdal | out-null
+
+  - curl http://download.gisinternals.com/sdk/downloads/release-1600-x64-gdal-1-11-4-mapserver-6-4-3.zip --output gdalbin.zip
+  - 7z x gdalbin.zip -oC:\gdal
+  - curl http://download.gisinternals.com/sdk/downloads/release-1600-x64-gdal-1-11-4-mapserver-6-4-3-libs.zip --output gdallibs.zip
+  - 7z x gdallibs.zip -oC:\gdal
+  - "SET PATH=C:\\gdal;C:\\gdal\\bin;C:\\gdal\\data;C:\\gdal\\bin\\gdal\\apps;%PATH%"
+  - "SET GDAL_DATA=C:\\gdal\\bin\\gdal-data"
+
+  - ECHO "Filesystem C:/GDAL:"
+  - ps: "ls \"C:/GDAL\""
+
+  - "%CMD_IN_ENV% pip install --disable-pip-version-check --user --upgrade pip"
+  - "%CMD_IN_ENV% pip install wheel"
+  - "%CMD_IN_ENV% pip install -r requirements.txt"
 
 build_script:
   - "%CMD_IN_ENV% python setup.py build"

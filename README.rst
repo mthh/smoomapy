@@ -52,9 +52,9 @@ Object-oriented API, allowing to easily redraw contours with new breaks values o
 .. code:: python
 
     >>> StePot = SmoothStewart('nuts3_data.geojson', "pop1999",
-                           span=65000, beta=3,
-                           resolution=60000,
-                           mask='nuts3_data.geojson')
+                               span=65000, beta=3,
+                               resolution=60000,
+                               mask='nuts3_data.geojson')
     >>> res = StePot.render(nb_class=8, func_grid="matplotlib",
                             disc_func="jenks", output="GeoDataFrame")
     >>> res.plot(cmap="YlOrRd", linewidth=0.1)

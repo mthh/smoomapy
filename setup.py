@@ -21,10 +21,10 @@ with open("README.rst") as f:
 setup(
     name='smoomapy',
     version=__version__,
-    author="mthh",
+    author="Matthieu Viry",
     author_email="matthieu.viry@ums-riate.fr",
     packages=find_packages(),
-    description="Make smoothed maps from a geo layer",
+    description="Brings smoothed maps through python",
     long_description=long_desc,
     url='http://github.com/mthh/smoomapy',
     license="MIT",
