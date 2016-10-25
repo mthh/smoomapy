@@ -33,7 +33,7 @@ install:
   - "python -c \"import struct; print(struct.calcsize('P') * 8)\""
   - "pip install --disable-pip-version-check --user --upgrade pip"
   - "pip install wheel"
-  - "pip install -r dev-requirements.txt"
+  - "pip install -r requirements.txt"
 
 build_script:
   - "%CMD_IN_ENV% python setup.py build"
@@ -42,9 +42,3 @@ build_script:
 test_script:
   - "%CMD_IN_ENV% python setup.py test"
 
-#after_test:
-#  - "%CMD_IN_ENV% python setup.py bdist_wheel"
-#
-#artifacts:
-#  # bdist_wheel puts your built wheel in the dist directory
-#- path: dist\*
