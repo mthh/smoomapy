@@ -3,24 +3,24 @@ environment:
     CMD_IN_ENV: "cmd /E:ON /V:ON /C .\\misc\\run_with_env.cmd"
 
   matrix:
-    - PYTHON: "C:\\Python27"
-      PYTHON_ARCH: "32"
-      PYTHON_VERSION: "2.7.x"
-    - PYTHON: "C:\\Python34"
-      PYTHON_ARCH: "32"
-      PYTHON_VERSION: "3.4.x"
-    - PYTHON: "C:\\Python35"
-      PYTHON_ARCH: "32"
-      PYTHON_VERSION: "3.5.x"
-    - PYTHON: "C:\\Python27-x64"
-      PYTHON_ARCH: "64"
-      PYTHON_VERSION: "2.7.x"
+#    - PYTHON: "C:\\Python27"
+#      PYTHON_ARCH: "32"
+#      PYTHON_VERSION: "2.7.x"
+#    - PYTHON: "C:\\Python34"
+#      PYTHON_ARCH: "32"
+#      PYTHON_VERSION: "3.4.x"
+#    - PYTHON: "C:\\Python35"
+#      PYTHON_ARCH: "32"
+#      PYTHON_VERSION: "3.5.x"
+#    - PYTHON: "C:\\Python27-x64"
+#      PYTHON_ARCH: "64"
+#      PYTHON_VERSION: "2.7.x"
     - PYTHON: "C:\\Python34-x64"
       PYTHON_ARCH: "64"
       PYTHON_VERSION: "3.4.x"
-    - PYTHON: "C:\\Python35-x64"
-      PYTHON_ARCH: "64"
-      PYTHON_VERSION: "3.5.x"
+#    - PYTHON: "C:\\Python35-x64"
+#      PYTHON_ARCH: "64"
+#      PYTHON_VERSION: "3.5.x"
 
 install:
   - "SET PATH=%PYTHON%;%PYTHON%\\Scripts;%PATH%"
@@ -32,12 +32,15 @@ install:
   - "python --version"
   - "python -c \"import struct; print(struct.calcsize('P') * 8)\""
 
+  - "%PYTHON%\\Scripts\\pip.exe install -r requirements-dev.txt"
   - mkdir %systemdrive%\temp
   - cd %systemdrive%\temp
-  - appveyor DownloadFile http://download.gisinternals.com/sdk/downloads/release-1600-gdal-1-11-mapserver-6-4/gdal-111-1600-core.msi
-  - msiexec /i gdal-111-1600-core.msi /qn
-  - cd %APPVEYOR_BUILD_FOLDER%
+  - appveyor DownloadFile http://download.gisinternals.com/sdk/downloads/release-1800-x64-gdal-2-1-mapserver-7-0/gdal-201-1800-x64-core.msi
 
+  - msiexec /i gdal-201-1800-x64-core.msi /qn
+  - appveyor DownloadFile http://download.gisinternals.com/sdk/downloads/release-1800-x64-gdal-2-1-mapserver-7-0/GDAL-2.1.1.win-amd64-py3.4.msi
+  - msiexec /i GDAL-2.1.1.win-amd64-py3.4.msi /qn
+  - cd %APPVEYOR_BUILD_FOLDER%
   - "%CMD_IN_ENV% pip install --disable-pip-version-check --user --upgrade pip"
   - "%CMD_IN_ENV% pip install wheel"
   - "%CMD_IN_ENV% pip install -r requirements.txt"
