@@ -32,7 +32,6 @@ install:
   - "python --version"
   - "python -c \"import struct; print(struct.calcsize('P') * 8)\""
 
-  - "%PYTHON%\\Scripts\\pip.exe install -r requirements-dev.txt"
   - mkdir %systemdrive%\temp
   - cd %systemdrive%\temp
   - appveyor DownloadFile http://download.gisinternals.com/sdk/downloads/release-1800-x64-gdal-2-1-mapserver-7-0/gdal-201-1800-x64-core.msi
