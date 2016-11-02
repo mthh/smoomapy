@@ -43,7 +43,7 @@ install:
   - cd %APPVEYOR_BUILD_FOLDER%
   - "%CMD_IN_ENV% pip install --disable-pip-version-check --user --upgrade pip"
   - "%CMD_IN_ENV% pip install wheel"
-  - "%CMD_IN_ENV% pip install --only-binary :all: fiona scipy"
+  - "%CMD_IN_ENV% pip install C:\\projects\\smoomapy\\misc\\Fiona-1.7.0-cp34-cp34m-win_amd64.whl"
   - "%CMD_IN_ENV% pip install -r requirements.txt"
 
 build_script:
