@@ -1,6 +1,6 @@
 environment:
   global:
-    CMD_IN_ENV: "cmd /E:ON /V:ON /C .\\misc\\run_with_env.cmd"
+    CMD_IN_ENV: "cmd /E:ON /V:ON /C .\\appveyor\\run_with_env.cmd"
 
   matrix:
 #    - PYTHON: "C:\\Python27"
@@ -28,7 +28,7 @@ install:
   - ps: "ls \"C:/\""
   - ECHO "Installed SDKs:"
   - ps: "ls \"C:/Program Files/Microsoft SDKs/Windows\""
-  - ps: if (-not(Test-Path($env:PYTHON))) { & misc\install.ps1 }
+  - ps: if (-not(Test-Path($env:PYTHON))) { & appveyor\install.ps1 }
   - "python --version"
   - "python -c \"import struct; print(struct.calcsize('P') * 8)\""
 
@@ -43,7 +43,10 @@ install:
   - cd %APPVEYOR_BUILD_FOLDER%
   - "%CMD_IN_ENV% pip install --disable-pip-version-check --user --upgrade pip"
   - "%CMD_IN_ENV% pip install wheel"
-  - "%CMD_IN_ENV% pip install C:\\projects\\smoomapy\\misc\\Fiona-1.7.0-cp34-cp34m-win_amd64.whl"
+  - "%CMD_IN_ENV% pip install C:\\projects\\smoomapy\\appveyor\\Fiona-1.7.0-cp34-cp34m-win_amd64.whl"
+  - "%CMD_IN_ENV% pip install C:\\projects\\smoomapy\\appveyor\\pyproj-1.9.5.1-cp34-cp34m-win_amd64.whl"
+  - "%CMD_IN_ENV% pip install C:\\projects\\smoomapy\\appveyor\\scipy-0.18.1-cp34-cp34m-win_amd64.whl"
+  - "%CMD_IN_ENV% pip install --only-binary :all: shapely"
   - "%CMD_IN_ENV% pip install -r requirements.txt"
 
 build_script:
