@@ -4,6 +4,6 @@
 """
     Smoomapy : make smoothed map in a python environnement.
 """
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 
 from .core import *

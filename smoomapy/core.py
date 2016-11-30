@@ -362,19 +362,6 @@ class SmoothStewart:
         else:
             self.use_mask = False
 
-        # Approx. maximum extend we can reach with "nat-earth" projection :
-        self.poly_max_extend = Polygon(
-            [(-9602645.20918163, 9072201.505771412),
-             (0.0, 9072201.505771412),
-             (9602645.20918163, 9072201.505771412),
-             (17446658.417140715, 0.0),
-             (9602645.20918163, -9072201.505771412),
-             (0.0, -9072201.518061588),
-             (-9602645.20918163, -9072201.505771412),
-             (-17446658.417140715, 0.0),
-             (-9602645.20918163, 9072201.505771412)
-             ])
-
         self.info2 = ""
         self.info3 = "Clipping mask: {}".format(self.use_mask)
 
@@ -416,6 +403,17 @@ class SmoothStewart:
                     resolution=None, typefct="exponential",
                     variable_name2=None):
         knownpts = self.gdf
+        # # Approx. maximum extend we can reach with "nat-earth" projection :
+        # self.poly_max_extend = Polygon(
+        #     [(-9602645.20918163, 9072201.505771412),
+        #      (0.0, 9072201.505771412),
+        #      (9602645.20918163, 9072201.505771412),
+        #      (17446658.417140715, 0.0),
+        #      (9602645.20918163, -9072201.505771412),
+        #      (0.0, -9072201.518061588),
+        #      (-9602645.20918163, -9072201.505771412),
+        #      (-17446658.417140715, 0.0),
+        #      (-9602645.20918163, 9072201.505771412)])
 
         if self.use_mask:
             bounds = self.mask.buffer(10).total_bounds
@@ -447,16 +445,19 @@ class SmoothStewart:
             natearth = pyproj.Proj("+proj=natearth")
             wgs84 = pyproj.Proj("+init=EPSG:4326")
 
-            prep_mask = prep(self.poly_max_extend)
+            # prep_mask = prep(self.poly_max_extend)
+            # idx = Idx()
+            # self.geo_unknownpts = np.array([[i[1], i[0]] for n, i in enumerate(
+            #     zip(*pyproj.transform(natearth, wgs84,
+            #                           [i[0] for i in self.unknownpts],
+            #                           [i[1] for i in self.unknownpts])))
+            #     if prep_mask.contains(Point(i)) and idx.add(n)])
+            #
+            # self.unknownpts = self.unknownpts[idx.values]
 
-            idx = Idx()
-            self.geo_unknownpts = np.array([[i[1], i[0]] for n, i in enumerate(
-                zip(*pyproj.transform(natearth, wgs84,
-                                      [i[0] for i in self.unknownpts],
-                                      [i[1] for i in self.unknownpts])))
-                if prep_mask.contains(Point(i)) and idx.add(n)])
-
-            self.unknownpts = self.unknownpts[idx.values]
+            self.geo_unknownpts = np.array([[i[1], i[0]] for i in zip(
+                *pyproj.transform(natearth, wgs84, [i[0] for i in self.unknownpts], [i[1] for i in self.unknownpts])
+                )])
 
             mat_dist = make_dist_mat(knwpts_coords,
                                      self.geo_unknownpts,
@@ -632,8 +633,8 @@ class SmoothStewart:
             res.loc[0:ix_max_ft, "geometry"] = res.geometry.buffer(
                 0).intersection(unary_union(self.mask.geometry.buffer(0)))
 
-        res.loc[0:ix_max_ft, "geometry"] = res.geometry.buffer(
-            0).intersection(self.poly_max_extend.buffer(-0.1))
+        # res.loc[0:ix_max_ft, "geometry"] = res.geometry.buffer(
+        #     0).intersection(self.poly_max_extend.buffer(-0.1))
         # Repair geometries if necessary :
         if not all(t in ("MultiPolygon", "Polygon") for t in res.geom_type):
             res.loc[0:ix_max_ft, "geometry"] = \
