@@ -59,8 +59,8 @@ Object-oriented API, allowing to easily redraw contours with new breaks values o
                             disc_func="jenks", output="GeoDataFrame")
     >>> res.plot(cmap="YlOrRd", linewidth=0.1)
 
-.. figure:: misc/export_plot.png
-   :alt: png
+.. figure:: https://raw.githubusercontent.com/mthh/smoomapy/master/misc/export_plot.png
+   :alt: png_example
 
 
 The long part of the computation is done during the initialization of
@@ -120,6 +120,6 @@ From github :
 .. |Version| image:: https://img.shields.io/pypi/v/smoomapy.svg
    :target: https://pypi.python.org/pypi/smoomapy
 
-.. |Coveralls| image:: https://coveralls.io/repos/github/mthh/smoomapy/badge.svg?branch=dev
+.. |Coveralls| image:: https://coveralls.io/repos/github/mthh/smoomapy/badge.svg?branch=master
    :target: https://coveralls.io/github/mthh/smoomapy?branch=dev
 
