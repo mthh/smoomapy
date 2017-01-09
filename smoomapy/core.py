@@ -173,6 +173,17 @@ def make_regular_points(bounds, resolution):
             (len(prog_x), len(prog_y)))
 
 
+def _compute_centroids(geometries):
+	res = []
+	for geom in geometries:
+		if geom.is_simple:
+			res.append(geom.centroid)
+		else:
+			ix_biggest = np.argmax([g.area for g in gg])
+			res.append(geom[ix_biggest].centroid)
+	return res
+
+
 def make_dist_mat(xy1, xy2, longlat=False):
     """
     Return a distance matrix between two set of coordinates.
@@ -427,10 +438,16 @@ class SmoothStewart:
         self.unknownpts, self.shape = make_regular_points(bounds, resolution) \
             if resolution else make_regular_points_with_no_res(bounds)
 
+        if all(i in ("Polygon", "Point") for i in knownpts.geom_type.values):
+            centroids = knownpts.geometry.centroid if not self.longlat else knownpts.to_crs({"init": "epsg:4326"}).geometry.centroid
+
+        else:
+            centroids = _compute_centroids(knownpts.geometry if not self.longlat else knownpts.to_crs({"init": "epsg:4326"}).geometry)
+
         if not self.longlat:
             knwpts_coords = np.array([
                 (g.coords.xy[0][0], g.coords.xy[1][0])
-                for g in knownpts.geometry.centroid])
+                for g in centroids])
 
             mat_dist = make_dist_mat(knwpts_coords,
                                      self.unknownpts,
@@ -439,8 +456,7 @@ class SmoothStewart:
         else:
             knwpts_coords = np.array([
                 [g.coords.xy[1][0], g.coords.xy[0][0]]
-                for g in knownpts.to_crs(
-                    {"init": "epsg:4326"}).geometry.centroid])
+                for g in centroids])
 
             natearth = pyproj.Proj("+proj=natearth")
             wgs84 = pyproj.Proj("+init=EPSG:4326")

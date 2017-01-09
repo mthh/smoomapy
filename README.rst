@@ -4,13 +4,13 @@ smoomapy
 Make smoothed maps in your python environnement
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-|Build Status| |Version| |Coveralls|
+|Build Status Travis| |Build Status Appveyor| |Version| |Coveralls|
 
 More or less a python port of *Stewart method* from R SpatialPositon
-package (https://github.com/Groupe-ElementR/SpatialPosition/).  
+package (https://github.com/Groupe-ElementR/SpatialPosition/).
 
 Allow to set a desired number of class and choose discretization method or
-directly set some custom breaks values.  
+directly set some custom breaks values.
 
 Input/output can be a path to a geographic layer (GeoJSON, shp, etc.) or a GeoDataFrame.
 
@@ -111,8 +111,11 @@ From github :
     $ cd smoomapy/
     $ python setup.py install
 
-.. |Build Status| image:: https://travis-ci.org/mthh/smoomapy.svg?branch=master
+.. |Build Status Travis| image:: https://travis-ci.org/mthh/smoomapy.svg?branch=master
    :target: https://travis-ci.org/mthh/smoomapy
+
+.. |Build Status Appveyor| image:: https://ci.appveyor.com/api/projects/status/tc7ynr2ejpp8a4c9/branch/master?svg=true
+   :target: https://ci.appveyor.com/project/mthh/smoomapy/branch/master
 
 .. |Version| image:: https://img.shields.io/pypi/v/smoomapy.svg
    :target: https://pypi.python.org/pypi/smoomapy
