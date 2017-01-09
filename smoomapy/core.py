@@ -176,11 +176,11 @@ def make_regular_points(bounds, resolution):
 def _compute_centroids(geometries):
 	res = []
 	for geom in geometries:
-		if geom.is_simple:
-			res.append(geom.centroid)
-		else:
-			ix_biggest = np.argmax([g.area for g in gg])
+		if hasattr(geom, '__len__'):
+			ix_biggest = np.argmax([g.area for g in geom])
 			res.append(geom[ix_biggest].centroid)
+		else:
+			res.append(geom.centroid)
 	return res
 
 
@@ -284,15 +284,6 @@ def isopoly_to_gdf(collec_poly, levels, field_name="levels"):
     return GeoDataFrame(geometry=polygons,
                         data=data,
                         columns=[field_name])
-
-
-class Idx:
-    def __init__(self):
-        self.values = []
-
-    def add(self, value):
-        self.values.append(value)
-        return True
 
 
 class SmoothStewart:
