@@ -511,14 +511,14 @@ class SmoothStewart:
     def define_levels(self, nb_class, disc_func):
         pot = self.pot
         _min = np.nanmin(pot)
-        if not nb_class:
-            nb_class = int(get_opt_nb_class(len(self.pot)) - 2)
 
+        if not nb_class:
+            nb_class = int(get_opt_nb_class(len(pot)) - 2)
         if not disc_func or "prog_geom" in disc_func:
             levels = [_min] + [
-                pot.max() / i for i in range(1, nb_class + 1)][::-1]
+                np.nanmax(pot) / i for i in range(1, nb_class + 1)][::-1]
         elif "equal_interval" in disc_func:
-            _bin = pot.max() / nb_class
+            _bin = np.nanmax(pot) / nb_class
             levels = [_min] + [_bin * i for i in range(1, nb_class+1)]
         elif "percentiles" in disc_func:
             levels = np.percentile(
@@ -620,6 +620,8 @@ class SmoothStewart:
 
         if user_defined_breaks:
             levels = user_defined_breaks
+            if levels[len(levels) - 1] < np.nanmax(pot):
+                levels[len(levels) - 1] = np.nanmax(pot)
         else:
             levels = self.define_levels(nb_class, disc_func)
 

@@ -58,6 +58,29 @@ class TestSmoothStewart(unittest.TestCase):
         for wanted_break, obtained_break in zip(my_breaks[1:-1], res["max"][:-1]):
             self.assertAlmostEqual(wanted_break, obtained_break)
 
+        # Test with user defined breaks values 
+        # (the maximum value is volontarily low, it should be changed by 
+        # the quick stewart function to use the maximum value
+        # in order to avoid making a hole)
+        my_breaks = [0, 1697631, 3395263, 5092894, 6790526,
+                     8488157, 10185789, 11883420, 12081052]
+        res2 = quick_stewart(
+            "misc/nuts3_data.geojson",
+            "pop2008",
+            span=65000,
+            beta=2,
+            resolution=60000,
+            user_defined_breaks=my_breaks,
+            mask="misc/nuts3_data.geojson",
+            output="GeoDataFrame")
+        self.assertIsInstance(res2, GeoDataFrame)
+        self.assertEqual(len(res), 8)
+
+        # We can test that there is no hole by comparing the area of theses polygons
+        # and the area of the previously computed resultat :
+        self.assertAlmostEqual(res2.area.sum(), res.area.sum())
+
+
     def test_object_stewart(self):
         # Test the OO approach for building smoothed map with stewart potentials
         StePot = SmoothStewart("misc/nuts3_data.geojson", "pop2008",
@@ -121,7 +144,7 @@ class TestSmoothStewart(unittest.TestCase):
     def test_distance_not_geo(self):
         # First whith one variable :
         StePot = SmoothStewart("misc/nuts3_data.geojson", "gdppps2008",
-                               span=65000, beta=2, resolution=48000,
+                               span=65000, beta=3, resolution=48000,
                                mask="misc/nuts3_data.geojson", distGeo=False)
         result = StePot.render(8, "equal_interval", output="Geodataframe")
         self.assertIsInstance(result, GeoDataFrame)
@@ -141,7 +164,7 @@ class TestSmoothStewart(unittest.TestCase):
 
         # Let's use pareto function for this one :
         StePot = SmoothStewart(gdf, "gdppps2008", typefct="pareto",
-                               span=65000, beta=2, resolution=48000,
+                               span=65000, beta=2.33, resolution=48000,
                                mask=None)
         result = StePot.render(6, output="Geodataframe")
         self.assertIsInstance(result, GeoDataFrame)
