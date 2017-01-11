@@ -621,7 +621,7 @@ class SmoothStewart:
         if user_defined_breaks:
             levels = user_defined_breaks
             if levels[len(levels) - 1] < np.nanmax(pot):
-                levels[len(levels) - 1] = np.nanmax(pot)
+                levels = levels + [np.nanmax(pot)]
         else:
             levels = self.define_levels(nb_class, disc_func)
 

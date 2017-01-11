@@ -59,11 +59,9 @@ class TestSmoothStewart(unittest.TestCase):
             self.assertAlmostEqual(wanted_break, obtained_break)
 
         # Test with user defined breaks values 
-        # (the maximum value is volontarily low, it should be changed by 
-        # the quick stewart function to use the maximum value
-        # in order to avoid making a hole)
+        # (the maximum value is volontarily low, a new class will be created to avoid making a hole)
         my_breaks = [0, 1697631, 3395263, 5092894, 6790526,
-                     8488157, 10185789, 11883420, 12081052]
+                     8488157, 10185789, 11883420, 12000000]
         res2 = quick_stewart(
             "misc/nuts3_data.geojson",
             "pop2008",
@@ -74,12 +72,12 @@ class TestSmoothStewart(unittest.TestCase):
             mask="misc/nuts3_data.geojson",
             output="GeoDataFrame")
         self.assertIsInstance(res2, GeoDataFrame)
-        self.assertEqual(len(res), 8)
 
         # We can test that there is no hole by comparing the area of theses polygons
         # and the area of the previously computed resultat :
         self.assertAlmostEqual(res2.area.sum(), res.area.sum())
-
+        # And by the fact that there is an extra class compared to the previous result :
+        self.assertEqual(len(res2), 9)
 
     def test_object_stewart(self):
         # Test the OO approach for building smoothed map with stewart potentials
