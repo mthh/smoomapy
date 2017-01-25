@@ -58,10 +58,14 @@ class TestSmoothStewart(unittest.TestCase):
         for wanted_break, obtained_break in zip(my_breaks[1:-1], res["max"][:-1]):
             self.assertAlmostEqual(wanted_break, obtained_break)
 
-        # Test with user defined breaks values 
-        # (the maximum value is volontarily low, a new class will be created to avoid making a hole)
-        my_breaks = [0, 1697631, 3395263, 5092894, 6790526,
+        # Test with user defined breaks values
+        # (the maximum value is volontarily low, and the minimum volontarily high,
+        #   two new class will be created,
+        #   respectively between the minimum and the first break value
+        #   and between the last break value and the maximum)
+        my_breaks = [1670000, 3395263, 5092894, 6790526,
                      8488157, 10185789, 11883420, 12000000]
+        nb_interval = len(my_breaks) - 1
         res2 = quick_stewart(
             "misc/nuts3_data.geojson",
             "pop2008",
@@ -75,9 +79,26 @@ class TestSmoothStewart(unittest.TestCase):
 
         # We can test that there is no hole by comparing the area of theses polygons
         # and the area of the previously computed resultat :
-        self.assertAlmostEqual(res2.area.sum(), res.area.sum())
-        # And by the fact that there is an extra class compared to the previous result :
-        self.assertEqual(len(res2), 9)
+        self.assertAlmostEqual(res2.area.sum(), res.area.sum(), 2)
+        # And by the fact that there is two extra class compared to our break values :
+        self.assertEqual(len(res2), nb_interval + 2)
+
+        # Test with break values non-unique (likely due to the discretization choosed):
+        # The duplicate should be removed ...
+        my_breaks = [0, 0, 1697631, 3395263, 5092894, 6790526,
+                     8488157, 10185789, 11883420, 13581052]
+        res3 = quick_stewart(
+            "misc/nuts3_data.geojson",
+            "pop2008",
+            span=65000,
+            beta=2,
+            resolution=60000,
+            user_defined_breaks=my_breaks,
+            mask="misc/nuts3_data.geojson",
+            output="GeoDataFrame")
+        self.assertIsInstance(res3, GeoDataFrame)
+        #  ... so we should have the same class number than `res` :
+        self.assertEqual(len(res3), len(res))
 
     def test_object_stewart(self):
         # Test the OO approach for building smoothed map with stewart potentials
