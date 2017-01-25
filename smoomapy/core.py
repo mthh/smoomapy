@@ -622,8 +622,17 @@ class SmoothStewart:
             levels = user_defined_breaks
             if levels[len(levels) - 1] < np.nanmax(pot):
                 levels = levels + [np.nanmax(pot)]
+            if levels[0] > np.nanmin(pot):
+                levels = [np.nanmin(pot)] + levels
         else:
             levels = self.define_levels(nb_class, disc_func)
+
+        # Ensure that the levels are unique/increasing
+        #  to avoid error from `contourf` :
+        s_levels = set(levels)
+        if len(s_levels) != len(levels):
+            levels = list(s_levels)
+        levels.sort()
 
         collec_poly = contourf(
             self.xi, self.yi, self.zi,

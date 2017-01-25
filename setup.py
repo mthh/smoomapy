@@ -33,12 +33,13 @@ setup(
     include_package_data=True,
     classifiers=[
         "Programming Language :: Python",
-        "Development Status :: 2 - Pre-Alpha",
+        "Development Status :: 4 - Beta",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 2.7",
         "Programming Language :: Python :: 3.4",
         "Programming Language :: Python :: 3.5",
+        "Programming Language :: Python :: 3.6",
         "Topic :: Scientific/Engineering",
         ],
     )

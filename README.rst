@@ -122,4 +122,3 @@ From github :
 
 .. |Coveralls| image:: https://coveralls.io/repos/github/mthh/smoomapy/badge.svg?branch=master
    :target: https://coveralls.io/github/mthh/smoomapy?branch=master
-
