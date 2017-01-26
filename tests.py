@@ -233,10 +233,10 @@ class TestSmoothStewart(unittest.TestCase):
         self.assertEqual(len(result), 9)
 
         gdf2 = GeoDataFrame.from_file('misc/nuts3_data.geojson').to_crs({"init": "epsg:4326"})
-        gdf.loc[:, 'gdppps2008'] = gdf['gdppps2008'].astype(object)
-        gdf.loc[15:20, 'gdppps2008'] = ""
-        gdf.loc[75:78, 'gdppps2008'] = ""
-        StePot = SmoothStewart(gdf2, 'gdppps2008', span=65000, beta=2, resolution=48000, mask=gdf)
+        gdf2.loc[:, 'gdppps2008'] = gdf2['gdppps2008'].astype(object)
+        gdf2.loc[15:20, 'gdppps2008'] = ""
+        gdf2.loc[75:78, 'gdppps2008'] = ""
+        StePot = SmoothStewart(gdf2, 'gdppps2008', span=65000, beta=2, resolution=48000, mask=gdf2)
         result = StePot.render(9, 'equal_interval', output="GeoDataFrame")
         self.assertIsInstance(result, GeoDataFrame)
         self.assertEqual(len(result), 9)
