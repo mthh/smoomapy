@@ -367,13 +367,20 @@ class SmoothStewart:
         self.info2 = ""
         self.info3 = "Clipping mask: {}".format(self.use_mask)
 
+        if not self.gdf[variable_name].dtype in (float, int):
+            self.gdf.loc[:, variable_name] = self.gdf[variable_name].replace('', np.NaN)
         self.gdf.loc[:, variable_name] = self.gdf[variable_name].astype(float)
         self.gdf = self.gdf[self.gdf[variable_name].notnull()]
 
         if variable_name2:
+            if not self.gdf[variable_name2].dtype in (float, int):
+                self.gdf.loc[:, variable_name2] = self.gdf[variable_name2].replace('', np.NaN)
             self.gdf.loc[:, variable_name2] = \
                 self.gdf[variable_name2].astype(float)
             self.gdf = self.gdf[self.gdf[variable_name2].notnull()]
+
+        # Provide a new index if entries have been removed :
+        self.gdf.index = range(len(self.gdf))
 
         self.compute_pot(variable_name, span, beta,
                          variable_name2=variable_name2,
