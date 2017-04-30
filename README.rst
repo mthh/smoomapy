@@ -67,6 +67,7 @@ The long part of the computation is done during the initialization of
 convenience methods allows to tweak and re-export the few last steps :
 
 **Allow to quickly redraw polygons with a new classification method **
+
 Availables classification
 methods are: "equal\_interval", "prog\_geom", "jenks", "percentiles" and
 "head-tail-breaks"
