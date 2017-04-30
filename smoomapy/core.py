@@ -7,12 +7,8 @@ More or less a python port of Stewart method from R SpatialPositon package
 @author: mthh
 """
 import numpy as np
-import pyproj
-from scipy.interpolate import griddata as scipy_griddata
-from matplotlib.mlab import griddata as mlab_griddata
 from matplotlib.pyplot import contourf
-from shapely.geometry import Polygon, MultiPolygon, Point
-from shapely.prepared import prep
+from shapely.geometry import Polygon, MultiPolygon
 from shapely.ops import unary_union
 from geopandas import GeoDataFrame
 from io import BytesIO, StringIO
@@ -114,24 +110,15 @@ def make_regular_points_with_no_res(bounds, nb_points=7560):
     shape : 2-floats tuple
         The number of points on each dimension (width, height)
     """
-    xmin, ymin, xmax, ymax = bounds
+    minlon, minlat, maxlon, maxlat = bounds
     nb_x = int(nb_points**0.5)
     nb_y = int(nb_points**0.5)
 
-    height = (ymax-ymin) / (nb_y - 2)
-    width = (xmax-xmin) / (nb_x - 2)
-
-    x_start = xmin - width
-    y_start = ymin - height
-
-    prog_x = \
-        [x_start + (width * i) for i in range(nb_x + 1)]
-    prog_y = \
-        [y_start + (height * i) for i in range(nb_y + 1)]
-
-    return (np.array([(x, y) for x in prog_x for y in prog_y]),
-            (len(prog_x), len(prog_y)))
-
+    return (
+        np.linspace(minlon, maxlon, nb_x),
+        np.linspace(minlat, maxlat, nb_y),
+        (nb_y, nb_x)
+        )
 
 def make_regular_points(bounds, resolution):
     """
@@ -152,26 +139,23 @@ def make_regular_points(bounds, resolution):
     shape : 2-floats tuple
         The number of points on each dimension (width, height)
     """
-    xmin, ymin, xmax, ymax = bounds
-    nb_x = int(round((xmax - xmin) / resolution))
-    nb_y = int(round((ymax - ymin) / resolution))
-
-    height = (ymax-ymin) / nb_y
-    width = (xmax-xmin) / nb_x
-    x_start = xmin - width
-    y_start = ymin - height
-
-    nb_x += 2
-    nb_y += 2
-
-    prog_x = \
-        [x_start + (resolution * i) for i in range(nb_x + 1)]
-    prog_y = \
-        [y_start + (resolution * i) for i in range(nb_y + 1)]
-
-    return (np.array([(x, y) for x in prog_x for y in prog_y]),
-            (len(prog_x), len(prog_y)))
-
+#    xmin, ymin, xmax, ymax = bounds
+    minlon, minlat, maxlon, maxlat = bounds
+    height = hav_dist(
+            np.array([(maxlon + minlon) / 2, minlat]),
+            np.array([(maxlon + minlon) / 2, maxlat])
+            )
+    width = hav_dist(
+            np.array([minlon, (maxlat + minlat) / 2]),
+            np.array([maxlon, (maxlat + minlat) / 2])
+            )
+    nb_x = int(round(width / resolution))
+    nb_y = int(round(height / resolution))
+    return (
+        np.linspace(minlon, maxlon, nb_x),
+        np.linspace(minlat, maxlat, nb_y),
+        (nb_y, nb_x)
+        )
 
 def _compute_centroids(geometries):
 	res = []
@@ -339,9 +323,9 @@ class SmoothStewart:
         self.longlat = kwargs.get("distGeo", kwargs.get("longlat", True))
         self.gdf = input_layer if isinstance(input_layer, GeoDataFrame) \
             else GeoDataFrame.from_file(input_layer)
-        self.proj_robinson = (
-            """+proj=robin +lon_0=0 +x_0=0 +y_0=0 """
-            """+ellps=WGS84 +datum=WGS84 +units=m +no_defs""")
+#        self.proj_robinson = (
+#            """+proj=robin +lon_0=0 +x_0=0 +y_0=0 """
+#            """+ellps=WGS84 +datum=WGS84 +units=m +no_defs""")
         self.proj_nat_earth = """+proj=natearth"""
         self.info = (
             'SmoothStewart - variable : {}{} ({} features)\n'
@@ -367,14 +351,21 @@ class SmoothStewart:
         self.info2 = ""
         self.info3 = "Clipping mask: {}".format(self.use_mask)
 
+        # Convert the first value field to a numeric field if not already,
+        # and dont take into account features with no value / NaN value
         if not self.gdf[variable_name].dtype in (float, int):
-            self.gdf.loc[:, variable_name] = self.gdf[variable_name].replace('', np.NaN)
+            self.gdf.loc[:, variable_name] = \
+                self.gdf[variable_name].replace('', np.NaN)
+
         self.gdf.loc[:, variable_name] = self.gdf[variable_name].astype(float)
         self.gdf = self.gdf[self.gdf[variable_name].notnull()]
 
+        # Convert the second value field to a numeric field if not already,
+        # and dont take into account features with no value / NaN value
         if variable_name2:
             if not self.gdf[variable_name2].dtype in (float, int):
-                self.gdf.loc[:, variable_name2] = self.gdf[variable_name2].replace('', np.NaN)
+                self.gdf.loc[:, variable_name2] = \
+                    self.gdf[variable_name2].replace('', np.NaN)
             self.gdf.loc[:, variable_name2] = \
                 self.gdf[variable_name2].astype(float)
             self.gdf = self.gdf[self.gdf[variable_name2].notnull()]
@@ -382,6 +373,7 @@ class SmoothStewart:
         # Provide a new index if entries have been removed :
         self.gdf.index = range(len(self.gdf))
 
+        # Calculate the value for each unknown points of the grid :
         self.compute_pot(variable_name, span, beta,
                          variable_name2=variable_name2,
                          resolution=resolution,
@@ -397,13 +389,14 @@ class SmoothStewart:
     def properties(self):
         print("\n".join([self.info, self.info2, self.info3]))
 
-    def _compute_interact_density(self, matdist, typefun, beta, span):
+    @staticmethod
+    def _compute_interact_density(matdist, typefun, beta, span):
         if 'pareto' in typefun:
             alpha = (2.0 ** (1.0 / beta) - 1.0) / span
-            self.mat_dens = (1 + alpha * matdist) ** (-beta)
+            return (1 + alpha * matdist) ** (-beta)
         elif 'exponential' in typefun:
             alpha = np.log(2) / span ** beta
-            self.mat_dens = np.exp(- alpha * matdist ** beta)
+            return np.exp(- alpha * matdist ** beta)
         else:
             raise ValueError('Bad interaction function argument: {}'
                              .format(typefun))
@@ -412,108 +405,59 @@ class SmoothStewart:
                     resolution=None, typefct="exponential",
                     variable_name2=None):
         knownpts = self.gdf
-        # # Approx. maximum extend we can reach with "nat-earth" projection :
-        # self.poly_max_extend = Polygon(
-        #     [(-9602645.20918163, 9072201.505771412),
-        #      (0.0, 9072201.505771412),
-        #      (9602645.20918163, 9072201.505771412),
-        #      (17446658.417140715, 0.0),
-        #      (9602645.20918163, -9072201.505771412),
-        #      (0.0, -9072201.518061588),
-        #      (-9602645.20918163, -9072201.505771412),
-        #      (-17446658.417140715, 0.0),
-        #      (-9602645.20918163, 9072201.505771412)])
 
         if self.use_mask:
-            bounds = self.mask.buffer(10).total_bounds
+            bounds = self.mask.buffer(
+                    10).to_crs({'init': 'epsg:4326'}).total_bounds
         else:
             tmp = np.max(
                 [(knownpts.total_bounds[2] - knownpts.total_bounds[0])/10,
                  (knownpts.total_bounds[3] - knownpts.total_bounds[1])/10])
             tmp = span * 1.5 if tmp < span * 1.5 else tmp
-            bounds = knownpts.buffer(tmp).total_bounds
+            bounds = knownpts.buffer(
+                    tmp).to_crs({'init': 'epsg:4326'}).total_bounds
 
-        self.unknownpts, self.shape = make_regular_points(bounds, resolution) \
+        self.XI, self.YI, self.shape = make_regular_points(bounds, resolution) \
             if resolution else make_regular_points_with_no_res(bounds)
 
+        self.unknownpts = np.array([(x, y) for x in self.XI for y in self.YI])
+
+        knownpts = knownpts.to_crs({'init': 'epsg:4326'})
+
         if all(i in ("Polygon", "Point") for i in knownpts.geom_type.values):
-            centroids = knownpts.geometry.centroid if not self.longlat else knownpts.to_crs({"init": "epsg:4326"}).geometry.centroid
-
+            centroids = knownpts.geometry.centroid 
         else:
-            centroids = _compute_centroids(knownpts.geometry if not self.longlat else knownpts.to_crs({"init": "epsg:4326"}).geometry)
+            centroids = _compute_centroids(knownpts.geometry)
 
-        if not self.longlat:
-            knwpts_coords = np.array([
-                (g.coords.xy[0][0], g.coords.xy[1][0])
-                for g in centroids])
+        knwpts_coords = np.array([
+            (g.coords.xy[0][0], g.coords.xy[1][0])
+            for g in centroids])
 
-            mat_dist = make_dist_mat(knwpts_coords,
-                                     self.unknownpts,
-                                     longlat=False)
-
-        else:
-            knwpts_coords = np.array([
-                [g.coords.xy[1][0], g.coords.xy[0][0]]
-                for g in centroids])
-
-            natearth = pyproj.Proj("+proj=natearth")
-            wgs84 = pyproj.Proj("+init=EPSG:4326")
-
-            # prep_mask = prep(self.poly_max_extend)
-            # idx = Idx()
-            # self.geo_unknownpts = np.array([[i[1], i[0]] for n, i in enumerate(
-            #     zip(*pyproj.transform(natearth, wgs84,
-            #                           [i[0] for i in self.unknownpts],
-            #                           [i[1] for i in self.unknownpts])))
-            #     if prep_mask.contains(Point(i)) and idx.add(n)])
-            #
-            # self.unknownpts = self.unknownpts[idx.values]
-
-            self.geo_unknownpts = np.array([[i[1], i[0]] for i in zip(
-                *pyproj.transform(natearth, wgs84, [i[0] for i in self.unknownpts], [i[1] for i in self.unknownpts])
-                )])
-
-            mat_dist = make_dist_mat(knwpts_coords,
-                                     self.geo_unknownpts,
-                                     longlat=True)
-
-        self._compute_interact_density(mat_dist, typefct, beta, span)
+        mat_dens = self._compute_interact_density(
+                make_dist_mat(knwpts_coords, self.unknownpts, longlat=True),
+                typefct, beta, span)
 
         if variable_name2:
             self.pot1 = (
-                knownpts[variable_name].values[:, np.newaxis] * self.mat_dens
+                knownpts[variable_name].values[:, np.newaxis] * mat_dens
                 ).sum(axis=0)
             self.pot2 = (
-                knownpts[variable_name2].values[:, np.newaxis] * self.mat_dens
+                knownpts[variable_name2].values[:, np.newaxis] * mat_dens
                 ).sum(axis=0)
             self.pot = (np.true_divide(self.pot1, self.pot2)).round(8)
-            _nan_mask = np.argwhere(~np.isnan(self.pot)).reshape(-1)
-            self.pot = self.pot[_nan_mask]
-            self.unknownpts = self.unknownpts[_nan_mask]
+#            _nan_mask = np.argwhere(~np.isnan(self.pot)).reshape(-1)
+#            self.pot = self.pot[_nan_mask]
+#            self.unknownpts = self.unknownpts[_nan_mask]
 
+            # Replace NaN values by -1.0 :
+            self.pot[np.argwhere(np.isnan(self.pot)).reshape(-1)] = -1.0
         else:
             self.pot = (
-                knownpts[variable_name].values[:, np.newaxis] * self.mat_dens
+                knownpts[variable_name].values[:, np.newaxis] * mat_dens
                 ).sum(axis=0).round(8)
-
-        self.x = np.array([c[0] for c in self.unknownpts])
-        self.y = np.array([c[1] for c in self.unknownpts])
-
-        self.xi = np.linspace(np.nanmin(self.x), np.nanmax(self.x),
-                              self.shape[0] if self.shape[0] > 100 else 100)
-        self.yi = np.linspace(np.nanmin(self.y), np.nanmax(self.y),
-                              self.shape[1] if self.shape[0] > 100 else 100)
 
         self.info2 = ("unknown points : {} - interpolation grid shape : {}"
                       ).format(len(self.unknownpts), self.shape)
-
-    def change_interp_grid_shape(self, new_shape):
-        self.xi = np.linspace(np.nanmin(self.x),
-                              np.nanmax(self.x),
-                              new_shape[0])
-        self.yi = np.linspace(np.nanmin(self.y),
-                              np.nanmax(self.y),
-                              new_shape[1])
 
     def define_levels(self, nb_class, disc_func):
         pot = self.pot
@@ -584,7 +528,15 @@ class SmoothStewart:
 
         Returns
         -------
-        smoothed_result : bytes or GeoDataFrame
+        smoothed_result : bytes or GeoDataFrame_name2].notnull()]
+
+        # Provide a new index if entries have been removed :
+        self.gdf.index = range(len(self.gdf))
+
+        self.compute_pot(variable_name, (span / 6372000) * np.pi / 180, beta,
+                         variable_name2=variable_name2,
+                         resolution=resolution,
+                         typefct=typefct)
             The result, dumped as GeoJSON (utf-8 encoded) or as a GeoDataFrame.
         """
         if disc_func and 'jenks' in disc_func and not jenks_breaks:
@@ -606,25 +558,6 @@ class SmoothStewart:
                 new_mask).to_crs(crs="+proj=natearth")
             self.check_mask()
 
-        if func_grid == "scipy":
-            self.zi = scipy_griddata((self.x, self.y), pot,
-                                     (self.xi[None, :], self.yi[:, None]),
-                                     method='linear').round(8)
-        elif func_grid == "scipy-cubic":
-            self.zi = scipy_griddata((self.x, self.y), pot,
-                                     (self.xi[None, :], self.yi[:, None]),
-                                     method='cubic').round(8)
-        elif func_grid == "scipy-nearest":
-            self.zi = scipy_griddata((self.x, self.y), pot,
-                                     (self.xi[None, :], self.yi[:, None]),
-                                     method='nearest').round(8)
-        elif func_grid == "matplotlib":
-            self.zi = mlab_griddata(self.x, self.y, pot,
-                                    self.xi, self.yi, interp='linear'
-                                    ).round(8)
-        else:
-            raise ValueError("Invalid interpolation function name provided")
-
         if user_defined_breaks:
             levels = user_defined_breaks
             if levels[len(levels) - 1] < np.nanmax(pot):
@@ -642,17 +575,17 @@ class SmoothStewart:
         levels.sort()
 
         collec_poly = contourf(
-            self.xi, self.yi, self.zi,
+            self.XI, self.YI, self.pot.reshape(tuple(reversed(self.shape))).T,
             levels,
-            vmax=abs(np.nanmax(self.zi)), vmin=-abs(np.nanmin(self.zi)))
+            vmax=abs(np.nanmax(self.pot)), vmin=-abs(np.nanmin(self.pot)))
         levels = collec_poly.levels
         levels[-1] = np.nanmax(pot)
         res = isopoly_to_gdf(collec_poly, levels=levels[1:], field_name="max")
 
-        res.crs = self.gdf.crs
+        res.crs = {'init': 'epsg:4326'}
         res["min"] = [np.nanmin(self.pot)] + res["max"][0:len(res)-1].tolist()
         res["center"] = (res["min"] + res["max"]) / 2
-
+        res.to_crs(crs="+proj=natearth", inplace=True)
         ix_max_ft = len(res) - 1
         if self.use_mask:
             res.loc[0:ix_max_ft, "geometry"] = res.geometry.buffer(
