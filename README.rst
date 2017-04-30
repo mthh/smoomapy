@@ -19,7 +19,6 @@ Requires:
 
 -  Numpy
 -  GeoPandas
--  SciPy
 -  Matplotlib
 
 Documentation on the method :
@@ -46,8 +45,8 @@ One-shot functionnality
                                user_defined_breaks=None,
                                output="geojson")
 
-Object-oriented API, allowing to easily redraw contours with new breaks values or new interpolation functionnality
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Object-oriented API, allowing to easily redraw contours with new breaks values
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code:: python
 
@@ -55,8 +54,8 @@ Object-oriented API, allowing to easily redraw contours with new breaks values o
                                span=65000, beta=3,
                                resolution=60000,
                                mask='nuts3_data.geojson')
-    >>> res = StePot.render(nb_class=8, func_grid="matplotlib",
-                            disc_func="jenks", output="GeoDataFrame")
+    >>> res = StePot.render(nb_class=8, disc_func="jenks",
+                            output="GeoDataFrame")
     >>> res.plot(cmap="YlOrRd", linewidth=0.1)
 
 .. figure:: https://raw.githubusercontent.com/mthh/smoomapy/master/misc/export_plot.png
@@ -67,18 +66,16 @@ The long part of the computation is done during the initialization of
 ``SmoothStewart`` instance (i.e. actually computing potentials). Some
 convenience methods allows to tweak and re-export the few last steps :
 
-**Allow to quickly redraw polygons with a new classification method (or
-with new interpolation functionnality)**
+**Allow to quickly redraw polygons with a new classification method **
 Availables classification
 methods are: "equal\_interval", "prog\_geom", "jenks", "percentiles" and
 "head-tail-breaks"
 
 .. code:: python
 
-    >>> StePot.change_interp_grid_shape((164, 112))
-
-    >>> res = StePot.render(nb_class=6, func_grid="scipy",
-                            disc_func="percentiles", output="GeoDataFrame")
+    >>> res = StePot.render(nb_class=6,
+                            disc_func="percentiles",
+                            output="GeoDataFrame")
 
 **Allow to set custom break values (highly recommended after a first
 rendering or having take a look at the distibution):**

@@ -245,6 +245,24 @@ class TestSmoothStewart(unittest.TestCase):
         self.assertIsInstance(result, GeoDataFrame)
         self.assertEqual(len(result), 9)
 
+    def test_from_point_layer_and_maximal_breaks(self):
+        gdf = GeoDataFrame.from_file("misc/nuts3_data.geojson").to_crs({"init": "epsg:4326"})
+
+        # Convert the input layer to a point layer :
+        gdf.geometry = gdf.geometry.centroid
+        StePot = SmoothStewart(gdf, "gdppps2008",
+                               span=65000, beta=2, resolution=60000,
+                               mask="misc/nuts3_data.geojson")
+
+        # Use equal interval :
+        result = StePot.render(9, "equal_interval", output="Geodataframe")
+        self.assertIsInstance(result, GeoDataFrame)
+        self.assertEqual(len(result), 9)
+
+        # Use maximal breaks discretisation method:
+        result = StePot.render(9, "equal_interval", output="Geodataframe")
+        self.assertIsInstance(result, GeoDataFrame)
+
     def test_errors(self):
         # Test with a wrong interaction function name :
         with self.assertRaises(ValueError):
