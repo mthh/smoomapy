@@ -160,23 +160,23 @@ class TestSmoothStewart(unittest.TestCase):
         self.assertIsInstance(result, GeoDataFrame)
         self.assertEqual(len(result), 8)
 
-    def test_distance_not_geo(self):
-        # First whith one variable :
-        StePot = SmoothStewart("misc/nuts3_data.geojson", "gdppps2008",
-                               span=65000, beta=3, resolution=48000,
-                               mask="misc/nuts3_data.geojson", distGeo=False)
-        result = StePot.render(8, "equal_interval", output="Geodataframe")
-        self.assertIsInstance(result, GeoDataFrame)
-        self.assertEqual(len(result), 8)
-
-        # Then with two variables :
-        StePot = SmoothStewart("misc/nuts3_data.geojson", "gdppps2008",
-                               span=65000, beta=2, resolution=48000,
-                               variable_name2="pop2008",
-                               mask="misc/nuts3_data.geojson", distGeo=False)
-        result = StePot.render(8, "equal_interval", output="Geodataframe")
-        self.assertIsInstance(result, GeoDataFrame)
-        self.assertEqual(len(result), 8)
+#    def test_distance_not_geo(self):
+#        # First whith one variable :
+#        StePot = SmoothStewart("misc/nuts3_data.geojson", "gdppps2008",
+#                               span=65000, beta=3, resolution=48000,
+#                               mask="misc/nuts3_data.geojson", distGeo=False)
+#        result = StePot.render(8, "equal_interval", output="Geodataframe")
+#        self.assertIsInstance(result, GeoDataFrame)
+#        self.assertEqual(len(result), 8)
+#
+#        # Then with two variables :
+#        StePot = SmoothStewart("misc/nuts3_data.geojson", "gdppps2008",
+#                               span=65000, beta=2, resolution=48000,
+#                               variable_name2="pop2008",
+#                               mask="misc/nuts3_data.geojson", distGeo=False)
+#        result = StePot.render(8, "equal_interval", output="Geodataframe")
+#        self.assertIsInstance(result, GeoDataFrame)
+#        self.assertEqual(len(result), 8)
 
     def test_from_gdf_with_new_mask(self):
         gdf = GeoDataFrame.from_file("misc/nuts3_data.geojson")
@@ -267,10 +267,6 @@ class TestSmoothStewart(unittest.TestCase):
         with self.assertRaises(ValueError):
             StePot.render(9, "foo", output="Geodataframe")
 
-        # Test with a wrong interpolation function name :
-        with self.assertRaises(ValueError):
-            StePot.render(9, "equal_interval", func_grid="foo")
-
         # Test using a layer without coordinate reference system :
         gdf = GeoDataFrame.from_file("misc/nuts3_data.geojson")
         gdf.crs = ""
@@ -278,43 +274,6 @@ class TestSmoothStewart(unittest.TestCase):
             SmoothStewart(gdf, "gdppps2008",
                           span=65000, beta=2, resolution=48000,
                           variable2="gdppps2008")
-
-    def test_mod_shape_interpolation_grid(self):
-        StePot = SmoothStewart("misc/nuts3_data.geojson", "pop2008",
-                               span=65000, beta=2, resolution=75000,
-                               mask="misc/nuts3_data.geojson")
-
-        # First rendering :
-        StePot.render(nb_class=8,
-                      disc_func="percentiles",
-                      output="geodataframe")
-
-        # Change the shape of the interpolation grid
-        # so the computed potential will be resampled to
-        # draw the polygons :
-        StePot.change_interp_grid_shape((40, 40))
-
-        # Test using the default griddata function :
-        result2 = StePot.render(nb_class=8,
-                                disc_func="percentiles",
-                                output="geodataframe")
-        self.assertIsInstance(result2, GeoDataFrame)
-        self.assertEqual(len(result2), 8)
-
-        # ... using "nearest" method from scipy :
-        result3 = StePot.render(nb_class=8,
-                                disc_func="percentiles",
-                                func_grid="scipy-nearest",
-                                output="geodataframe")
-        self.assertEqual(len(result3), 8)
-
-        # ... using matplotlib mlab griddata function :
-        result4 = StePot.render(nb_class=8,
-                                disc_func="percentiles",
-                                func_grid="matplotlib",
-                                output="geodataframe")
-        self.assertEqual(len(result4), 8)
-
 
 class TestHelpers(unittest.TestCase):
     def setUp(self):

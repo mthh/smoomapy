@@ -82,10 +82,10 @@ def quick_stewart(input_geojson_points, variable_name, span,
                                    span=12500, beta=3, typefct="pareto",
                                    output="GeoDataFrame")
     """
-    distGeo = kwargs.get("distGeo", kwargs.get("longlat", True))
+#    distGeo = kwargs.get("distGeo", kwargs.get("longlat", True))
     StePot = SmoothStewart(input_geojson_points, variable_name, span,
-                           beta, typefct, resolution,
-                           None, mask, distGeo=distGeo)
+                           beta, typefct, resolution, None, mask)
+#                           None, mask, distGeo=distGeo)
     return StePot.render(nb_class=nb_class,
                          user_defined_breaks=user_defined_breaks,
                          output=output)
@@ -311,7 +311,7 @@ class SmoothStewart:
     Methods
     -------
     render(nb_class=8, disc_func=None, user_defined_breaks=None,
-           func_grid="scipy", output="GeoJSON", new_mask=False)
+           output="GeoJSON", new_mask=False)
         Render the contour polygon according to the choosen number of class and
         the choosen classification method (or according to
         `user_defined_breaks` which will overwrite these parameters)
@@ -320,7 +320,7 @@ class SmoothStewart:
     def __init__(self, input_layer, variable_name, span, beta,
                  typefct='exponential', resolution=None,
                  variable_name2=None, mask=None, **kwargs):
-        self.longlat = kwargs.get("distGeo", kwargs.get("longlat", True))
+#        self.longlat = kwargs.get("distGeo", kwargs.get("longlat", True))
         self.gdf = input_layer if isinstance(input_layer, GeoDataFrame) \
             else GeoDataFrame.from_file(input_layer)
 #        self.proj_robinson = (
@@ -499,7 +499,7 @@ class SmoothStewart:
             self.use_mask = False
 
     def render(self, nb_class=8, disc_func=None, user_defined_breaks=None,
-               func_grid="scipy", output="GeoJSON", new_mask=False):
+               output="GeoJSON", new_mask=False):
         """
         Parameters
         ----------
@@ -513,11 +513,6 @@ class SmoothStewart:
             A list of ordered break to use to construct the contours
             (override `nb_class` and `disc_func` values if any)
             (default: None).
-        func_grid : str, optionnal
-            The kind of function to use to make the interpolation
-            ("scipy" for scipy.interpolate.griddata,
-             "matplotlib" for matplotlib.mlab.griddata,
-             "rbf" for scipy.interpolate.rbf, default: "scipy").
         output : string, optionnal
             The type of output expected (not case-sensitive)
             in {"GeoJSON", "GeoDataFrame"} (default: "GeoJSON").
