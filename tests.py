@@ -260,7 +260,7 @@ class TestSmoothStewart(unittest.TestCase):
         self.assertEqual(len(result), 9)
 
         # Use maximal breaks discretisation method:
-        result = StePot.render(9, "equal_interval", output="Geodataframe")
+        result = StePot.render(9, "maximal_breaks", output="Geodataframe")
         self.assertIsInstance(result, GeoDataFrame)
 
     def test_errors(self):
