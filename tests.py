@@ -113,17 +113,9 @@ class TestSmoothStewart(unittest.TestCase):
         self.assertIsInstance(result, GeoDataFrame)
         self.assertEqual(len(result), 10)
 
-        # Test using an other griddata functionnality than the default one :
-        result = StePot.render(nb_class=7,
-                               disc_func="equal_interval",
-                               func_grid="scipy-cubic",
-                               output="geodataframe")
-        self.assertIsInstance(result, GeoDataFrame)
-        self.assertEqual(len(result), 7)
-
         # Test using somes already choosed break values :
-        my_breaks = [0, 1697631, 3395263, 5092894, 6790526,
-                     8488157, 10185789, 11883420, 13581052]
+        my_breaks = [0, 197631, 1295263, 2092894, 3090526,
+                     5888157, 10185789, 11883420, 13581052]
         result = StePot.render(
             nb_class=48,  # bogus values as `nb_class` and
             disc_func="foobar",  # ... disc_func should be overrided
