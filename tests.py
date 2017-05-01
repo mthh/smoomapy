@@ -277,13 +277,6 @@ class TestSmoothStewart(unittest.TestCase):
         with self.assertRaises(ValueError):
             StePot.render(9, "foo", output="Geodataframe")
 
-        # Test using a layer without coordinate reference system :
-        gdf = GeoDataFrame.from_file("misc/nuts3_data.geojson")
-        gdf.crs = ""
-        with self.assertRaises(Exception):
-            SmoothStewart(gdf, "gdppps2008",
-                          span=65000, beta=2, resolution=48000,
-                          variable2="gdppps2008")
 
 class TestHelpers(unittest.TestCase):
     def setUp(self):

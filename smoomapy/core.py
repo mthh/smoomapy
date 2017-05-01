@@ -37,7 +37,7 @@ def quick_stewart(input_geojson_points, variable_name, span,
     variable_name : str
         The name of the variable to use (numerical field only).
     span : int
-        The span!
+        The span (meters).
     beta : float
         The beta!
     typefct : str, optionnal
@@ -46,7 +46,7 @@ def quick_stewart(input_geojson_points, variable_name, span,
         The number of class, if unset will most likely be 8
         (default: None)
     resolution : int, optionnal
-        The resolution to use (in unit of the input file), if not set a default
+        The resolution to use (in meters), if not set a default
         resolution will be used in order to make a grid containing around
         7500 pts (default: None).
     mask : str, optionnal
@@ -112,8 +112,8 @@ def make_regular_points_with_no_res(bounds, nb_points=7560):
     """
     minlon, minlat, maxlon, maxlat = bounds
     minlon, minlat, maxlon, maxlat = bounds
-    offset_lon = (maxlon - minlon) / 10
-    offset_lat = (maxlat - minlat) / 10
+    offset_lon = (maxlon - minlon) / 8
+    offset_lat = (maxlat - minlat) / 8
     minlon -= offset_lon
     maxlon += offset_lon
     minlat -= offset_lat
@@ -149,8 +149,8 @@ def make_regular_points(bounds, resolution):
     """
 #    xmin, ymin, xmax, ymax = bounds
     minlon, minlat, maxlon, maxlat = bounds
-    offset_lon = (maxlon - minlon) / 10
-    offset_lat = (maxlat - minlat) / 10
+    offset_lon = (maxlon - minlon) / 8
+    offset_lat = (maxlat - minlat) / 8
     minlon -= offset_lon
     maxlon += offset_lon
     minlat -= offset_lat
@@ -167,9 +167,9 @@ def make_regular_points(bounds, resolution):
     nb_x = int(round(width / resolution))
     nb_y = int(round(height / resolution))
     if nb_y * 0.6 > nb_x:
-        nb_x = int(nb_x + nb_x / 4)
+        nb_x = int(nb_x + nb_x / 3)
     elif nb_x * 0.6 > nb_y:
-        nb_y = int(nb_y + nb_y / 4)
+        nb_y = int(nb_y + nb_y / 3)
     return (
         np.linspace(minlon, maxlon, nb_x),
         np.linspace(minlat, maxlat, nb_y),
@@ -339,17 +339,14 @@ class SmoothStewart:
                  typefct='exponential', resolution=None,
                  variable_name2=None, mask=None, **kwargs):
 #        self.longlat = kwargs.get("distGeo", kwargs.get("longlat", True))
-        self.gdf = input_layer if isinstance(input_layer, GeoDataFrame) \
+        self.gdf = input_layer.copy() if isinstance(input_layer, GeoDataFrame) \
             else GeoDataFrame.from_file(input_layer)
-#        self.proj_robinson = (
-#            """+proj=robin +lon_0=0 +x_0=0 +y_0=0 """
-#            """+ellps=WGS84 +datum=WGS84 +units=m +no_defs""")
+
         if self.gdf.crs and self.gdf.crs is not {'init': 'epsg:4326'}:
             self.gdf.to_crs({'init': 'epsg:4326'}, inplace=True)
         else:
             self.gdf.crs = {'init': 'epsg:4326'}
 
-        self.proj_nat_earth = """+proj=natearth"""
         self.info = (
             'SmoothStewart - variable : {}{} ({} features)\n'
             'beta : {} - span : {} - function : {}'
@@ -390,6 +387,7 @@ class SmoothStewart:
             self.gdf.loc[:, variable_name2] = \
                 self.gdf[variable_name2].astype(float)
             self.gdf = self.gdf[self.gdf[variable_name2].notnull()]
+            self.gdf = self.gdf[self.gdf[variable_name2] != 0]
 
         # Provide a new index if entries have been removed :
         self.gdf.index = range(len(self.gdf))
@@ -432,25 +430,35 @@ class SmoothStewart:
         else:
             bounds = knownpts.total_bounds
 
+        # Get the x and y axis of the grid:
         self.XI, self.YI, self.shape = make_regular_points(bounds, resolution) \
             if resolution else make_regular_points_with_no_res(bounds)
 
+        # Compute the coordinates of each point of the grid :
         unknownpts = np.array([(x, y) for x in self.XI for y in self.YI])
 
+        # Use the centroid if the feature is a Polygon
+        #  or use the centroid of the largest Polygon for a MultiPolygon:
         if all(i in ("Polygon", "Point") for i in knownpts.geom_type.values):
             centroids = knownpts.geometry.centroid 
         else:
             centroids = _compute_centroids(knownpts.geometry)
 
+        # Coordinates of every known point:
         knwpts_coords = np.array([
             (g.coords.xy[0][0], g.coords.xy[1][0])
             for g in centroids])
 
+        # Compute the interaction matrix: 
         mat_dens = self._compute_interact_density(
                 make_dist_mat(knwpts_coords, unknownpts, longlat=True),
                 typefct, beta, span)
 
-        if variable_name2:
+        if not variable_name2:
+            self.pot = (
+                knownpts[variable_name].values[:, np.newaxis] * mat_dens
+                ).sum(axis=0).round(8)
+        else:
             self.pot1 = (
                 knownpts[variable_name].values[:, np.newaxis] * mat_dens
                 ).sum(axis=0)
@@ -458,16 +466,11 @@ class SmoothStewart:
                 knownpts[variable_name2].values[:, np.newaxis] * mat_dens
                 ).sum(axis=0)
             self.pot = (np.true_divide(self.pot1, self.pot2)).round(8)
-#            _nan_mask = np.argwhere(~np.isnan(self.pot)).reshape(-1)
-#            self.pot = self.pot[_nan_mask]
-#            self.unknownpts = self.unknownpts[_nan_mask]
 
             # Replace NaN values by -1.0 :
             self.pot[np.argwhere(np.isnan(self.pot)).reshape(-1)] = -1.0
-        else:
-            self.pot = (
-                knownpts[variable_name].values[:, np.newaxis] * mat_dens
-                ).sum(axis=0).round(8)
+            # Replace inf values by -1.0 :
+            self.pot[np.argwhere(np.isinf(self.pot)).reshape(-1)] = -1.0
 
         self.info2 = ("unknown points : {} - interpolation grid shape : {}"
                       ).format(len(unknownpts), self.shape)
@@ -554,12 +557,11 @@ class SmoothStewart:
             self.mask = None
         elif isinstance(new_mask, GeoDataFrame):
             self.use_mask = True
-            self.mask = new_mask.to_crs(crs="+proj=natearth")
+            self.mask = new_mask
             self.check_mask()
         elif isinstance(new_mask, (str, BytesIO, StringIO)):
             self.use_mask = True
-            self.mask = GeoDataFrame.from_file(
-                new_mask).to_crs(crs="+proj=natearth")
+            self.mask = GeoDataFrame.from_file(new_mask)
             self.check_mask()
 
         if user_defined_breaks:
@@ -578,10 +580,19 @@ class SmoothStewart:
             levels = list(s_levels)
         levels.sort()
 
-        collec_poly = contourf(
-            self.XI, self.YI, self.pot.reshape(tuple(reversed(self.shape))).T,
-            levels,
-            vmax=abs(np.nanmax(self.pot)), vmin=-abs(np.nanmin(self.pot)))
+        try:
+            collec_poly = contourf(
+                self.XI, self.YI,
+                self.pot.reshape(tuple(reversed(self.shape))).T,
+                levels,
+                vmax=abs(np.nanmax(self.pot)), vmin=-abs(np.nanmin(self.pot)))
+        # Retry without setting the levels :
+        except ValueError:
+            collec_poly = contourf(
+                self.XI, self.YI,
+                self.pot.reshape(tuple(reversed(self.shape))).T,
+                vmax=abs(np.nanmax(self.pot)), vmin=-abs(np.nanmin(self.pot)))
+
         levels = collec_poly.levels
         levels[-1] = np.nanmax(pot)
         res = isopoly_to_gdf(collec_poly, levels=levels[1:], field_name="max")
