@@ -111,9 +111,20 @@ def make_regular_points_with_no_res(bounds, nb_points=7560):
         The number of points on each dimension (width, height)
     """
     minlon, minlat, maxlon, maxlat = bounds
+    minlon, minlat, maxlon, maxlat = bounds
+    offset_lon = (maxlon - minlon) / 10
+    offset_lat = (maxlat - minlat) / 10
+    minlon -= offset_lon
+    maxlon += offset_lon
+    minlat -= offset_lat
+    maxlat += offset_lat
+
     nb_x = int(nb_points**0.5)
     nb_y = int(nb_points**0.5)
-
+    if nb_y * 0.6 > nb_x:
+        nb_x = int(nb_x + nb_x / 4)
+    elif nb_x * 0.6 > nb_y:
+        nb_y = int(nb_y + nb_y / 4)
     return (
         np.linspace(minlon, maxlon, nb_x),
         np.linspace(minlat, maxlat, nb_y),
@@ -141,6 +152,13 @@ def make_regular_points(bounds, resolution):
     """
 #    xmin, ymin, xmax, ymax = bounds
     minlon, minlat, maxlon, maxlat = bounds
+    offset_lon = (maxlon - minlon) / 10
+    offset_lat = (maxlat - minlat) / 10
+    minlon -= offset_lon
+    maxlon += offset_lon
+    minlat -= offset_lat
+    maxlat += offset_lat
+
     height = hav_dist(
             np.array([(maxlon + minlon) / 2, minlat]),
             np.array([(maxlon + minlon) / 2, maxlat])
@@ -151,6 +169,10 @@ def make_regular_points(bounds, resolution):
             )
     nb_x = int(round(width / resolution))
     nb_y = int(round(height / resolution))
+    if nb_y * 0.6 > nb_x:
+        nb_x = int(nb_x + nb_x / 4)
+    elif nb_x * 0.6 > nb_y:
+        nb_y = int(nb_y + nb_y / 4)
     return (
         np.linspace(minlon, maxlon, nb_x),
         np.linspace(minlat, maxlat, nb_y),
@@ -213,15 +235,14 @@ def hav_dist(locs1, locs2, k=np.pi/180):
     mat_dist : numpy.array
         The distance matrix between locs1 and locs2
     """
-    locs1 = locs1 * k
-    locs2 = locs2 * k
+    locs1 = np.radians(locs1)
+    locs2 = np.radians(locs2)
     cos_lat1 = np.cos(locs1[..., 0])
     cos_lat2 = np.cos(locs2[..., 0])
     cos_lat_d = np.cos(locs1[..., 0] - locs2[..., 0])
     cos_lon_d = np.cos(locs1[..., 1] - locs2[..., 1])
     return 6367000 * np.arccos(
         cos_lat_d - cos_lat1 * cos_lat2 * (1 - cos_lon_d))
-
 
 def isopoly_to_gdf(collec_poly, levels, field_name="levels"):
     """
@@ -326,6 +347,11 @@ class SmoothStewart:
 #        self.proj_robinson = (
 #            """+proj=robin +lon_0=0 +x_0=0 +y_0=0 """
 #            """+ellps=WGS84 +datum=WGS84 +units=m +no_defs""")
+        if self.gdf.crs and self.gdf.crs is not {'init': 'epsg:4326'}:
+            self.gdf.to_crs({'init': 'epsg:4326'}, inplace=True)
+        else:
+            self.gdf.crs = {'init': 'epsg:4326'}
+
         self.proj_nat_earth = """+proj=natearth"""
         self.info = (
             'SmoothStewart - variable : {}{} ({} features)\n'
@@ -333,7 +359,6 @@ class SmoothStewart:
             ).format(variable_name,
                      " / {}".format(variable_name2) if variable_name2 else "",
                      len(self.gdf), beta, span, typefct)
-        self.gdf.to_crs(crs="+proj=natearth", inplace=True)
         if mask is not None:
             if isinstance(mask, GeoDataFrame):
                 self.mask = mask
@@ -343,7 +368,6 @@ class SmoothStewart:
             else:
                 self.mask = GeoDataFrame.from_file(mask)
 
-            self.mask.to_crs(crs="+proj=natearth", inplace=True)
             self.check_mask()
         else:
             self.use_mask = False
@@ -407,22 +431,14 @@ class SmoothStewart:
         knownpts = self.gdf
 
         if self.use_mask:
-            bounds = self.mask.buffer(
-                    10).to_crs({'init': 'epsg:4326'}).total_bounds
+            bounds = self.mask.total_bounds
         else:
-            tmp = np.max(
-                [(knownpts.total_bounds[2] - knownpts.total_bounds[0])/10,
-                 (knownpts.total_bounds[3] - knownpts.total_bounds[1])/10])
-            tmp = span * 1.5 if tmp < span * 1.5 else tmp
-            bounds = knownpts.buffer(
-                    tmp).to_crs({'init': 'epsg:4326'}).total_bounds
+            bounds = knownpts.total_bounds
 
         self.XI, self.YI, self.shape = make_regular_points(bounds, resolution) \
             if resolution else make_regular_points_with_no_res(bounds)
 
-        self.unknownpts = np.array([(x, y) for x in self.XI for y in self.YI])
-
-        knownpts = knownpts.to_crs({'init': 'epsg:4326'})
+        unknownpts = np.array([(x, y) for x in self.XI for y in self.YI])
 
         if all(i in ("Polygon", "Point") for i in knownpts.geom_type.values):
             centroids = knownpts.geometry.centroid 
@@ -434,7 +450,7 @@ class SmoothStewart:
             for g in centroids])
 
         mat_dens = self._compute_interact_density(
-                make_dist_mat(knwpts_coords, self.unknownpts, longlat=True),
+                make_dist_mat(knwpts_coords, unknownpts, longlat=True),
                 typefct, beta, span)
 
         if variable_name2:
@@ -457,7 +473,7 @@ class SmoothStewart:
                 ).sum(axis=0).round(8)
 
         self.info2 = ("unknown points : {} - interpolation grid shape : {}"
-                      ).format(len(self.unknownpts), self.shape)
+                      ).format(len(unknownpts), self.shape)
 
     def define_levels(self, nb_class, disc_func):
         pot = self.pot
@@ -492,8 +508,12 @@ class SmoothStewart:
 
     def check_mask(self):
         if len(set(self.mask.type)
-                .intersection({"Polygon", "MultiPolygon"})) > 0 \
-                and self.gdf.crs == self.mask.crs:
+                .intersection({"Polygon", "MultiPolygon"})) > 0:
+            if self.mask.crs and self.mask.crs is not {'init': 'epsg:4326'}:
+                self.mask.to_crs({'init': 'epsg:4326'}, inplace=True)
+            else:
+                self.mask.crs = {'init': 'epsg:4326'}
+    
             self.use_mask = True
         else:
             self.use_mask = False
@@ -523,15 +543,7 @@ class SmoothStewart:
 
         Returns
         -------
-        smoothed_result : bytes or GeoDataFrame_name2].notnull()]
-
-        # Provide a new index if entries have been removed :
-        self.gdf.index = range(len(self.gdf))
-
-        self.compute_pot(variable_name, (span / 6372000) * np.pi / 180, beta,
-                         variable_name2=variable_name2,
-                         resolution=resolution,
-                         typefct=typefct)
+        smoothed_result : bytes or GeoDataFrame
             The result, dumped as GeoJSON (utf-8 encoded) or as a GeoDataFrame.
         """
         if disc_func and 'jenks' in disc_func and not jenks_breaks:
@@ -580,7 +592,7 @@ class SmoothStewart:
         res.crs = {'init': 'epsg:4326'}
         res["min"] = [np.nanmin(self.pot)] + res["max"][0:len(res)-1].tolist()
         res["center"] = (res["min"] + res["max"]) / 2
-        res.to_crs(crs="+proj=natearth", inplace=True)
+
         ix_max_ft = len(res) - 1
         if self.use_mask:
             res.loc[0:ix_max_ft, "geometry"] = res.geometry.buffer(
@@ -596,7 +608,5 @@ class SmoothStewart:
                      [j for j in geom if j.type in ('Polygon', 'MultiPolygon')]
                      )
                  for geom in res.geometry]
-
-        res.to_crs({'init': 'epsg:4326'}, inplace=True)
 
         return res.to_json().encode() if "geojson" in output.lower() else res
