@@ -121,10 +121,7 @@ def make_regular_points_with_no_res(bounds, nb_points=7560):
 
     nb_x = int(nb_points**0.5)
     nb_y = int(nb_points**0.5)
-    if nb_y * 0.6 > nb_x:
-        nb_x = int(nb_x + nb_x / 4)
-    elif nb_x * 0.6 > nb_y:
-        nb_y = int(nb_y + nb_y / 4)
+
     return (
         np.linspace(minlon, maxlon, nb_x),
         np.linspace(minlat, maxlat, nb_y),
