@@ -48,7 +48,7 @@ def quick_stewart(input_geojson_points, variable_name, span,
     resolution : int, optionnal
         The resolution to use (in meters), if not set a default
         resolution will be used in order to make a grid containing around
-        7500 pts (default: None).
+        9025 pts (default: None).
     mask : str, optionnal
         Path to the file (Polygons only) to use as clipping mask,
         can also be a GeoDataFrame (default: None).
@@ -91,7 +91,7 @@ def quick_stewart(input_geojson_points, variable_name, span,
                          output=output)
 
 
-def make_regular_points_with_no_res(bounds, nb_points=7560):
+def make_regular_points_with_no_res(bounds, nb_points=9025):
     """
     Return a regular grid of points within `bounds` with the specified
     number of points (or a close approximate value).
@@ -101,7 +101,7 @@ def make_regular_points_with_no_res(bounds, nb_points=7560):
     bounds : 4-floats tuple
         The bbox of the grid, as xmin, ymin, xmax, ymax.
     nb_points : int, optionnal
-        The desired number of points (default: 7560)
+        The desired number of points (default: 9025)
 
     Returns
     -------
@@ -187,7 +187,7 @@ def _compute_centroids(geometries):
 	return res
 
 
-def make_dist_mat(xy1, xy2, longlat=False):
+def make_dist_mat(xy1, xy2, longlat=True):
     """
     Return a distance matrix between two set of coordinates.
     Use geometric distance (default) or haversine distance (if longlat=True).
@@ -207,12 +207,12 @@ def make_dist_mat(xy1, xy2, longlat=False):
     mat_dist : numpy.array
         The distance matrix between xy1 and xy2
     """
-    if not longlat:
-        d0 = np.subtract.outer(xy1[:, 0], xy2[:, 0])
-        d1 = np.subtract.outer(xy1[:, 1], xy2[:, 1])
-        return np.hypot(d0, d1)
-    else:
-        return hav_dist(xy1[:, None], xy2)
+#    if longlat:
+    return hav_dist(xy1[:, None], xy2)
+#    else:
+#        d0 = np.subtract.outer(xy1[:, 0], xy2[:, 0])
+#        d1 = np.subtract.outer(xy1[:, 1], xy2[:, 1])
+#        return np.hypot(d0, d1)
 
 
 def hav_dist(locs1, locs2, k=np.pi/180):
@@ -240,6 +240,7 @@ def hav_dist(locs1, locs2, k=np.pi/180):
     cos_lon_d = np.cos(locs1[..., 1] - locs2[..., 1])
     return 6367000 * np.arccos(
         cos_lat_d - cos_lat1 * cos_lat2 * (1 - cos_lon_d))
+
 
 def isopoly_to_gdf(collec_poly, levels, field_name="levels"):
     """
@@ -310,7 +311,7 @@ class SmoothStewart:
     resolution : int, optionnal
         The resolution to use (in unit of the input file), if not set a default
         resolution will be used in order to make a grid containing around
-        7500 pts (default: None).
+        9025 pts (default: None).
     mask : str, optionnal
         Path to the file (Polygons only) to use as clipping mask (default: None).
     variable_name2 : str, optionnal

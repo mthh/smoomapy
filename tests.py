@@ -145,7 +145,7 @@ class TestSmoothStewart(unittest.TestCase):
     def test_object_stewart_two_var(self):
         # Test the OO approach with two variables :
         StePot = SmoothStewart("misc/nuts3_data.geojson", "gdppps2008",
-                               span=65000, beta=2, resolution=48000,
+                               span=65000, beta=2, resolution=80000,
                                variable_name2="pop2008",
                                mask="misc/nuts3_data.geojson")
         result = StePot.render(8, "equal_interval", output="Geodataframe")
@@ -175,7 +175,7 @@ class TestSmoothStewart(unittest.TestCase):
 
         # Let's use pareto function for this one :
         StePot = SmoothStewart(gdf, "gdppps2008", typefct="pareto",
-                               span=65000, beta=2.33, resolution=48000,
+                               span=65000, beta=2.33, resolution=60000,
                                mask=None)
         result = StePot.render(6, output="Geodataframe")
         self.assertIsInstance(result, GeoDataFrame)
@@ -215,16 +215,16 @@ class TestSmoothStewart(unittest.TestCase):
         self.assertEqual(len(result), 5)
 
     def test_input_with_missing_values(self):
-        gdf = GeoDataFrame.from_file("misc/nuts3_data.geojson").to_crs({"init": "epsg:4326"})
+        gdf = GeoDataFrame.from_file("misc/nuts3_data.geojson")
         gdf.loc[12:18, "gdppps2008"] = np.NaN
         StePot = SmoothStewart(gdf, "gdppps2008",
-                               span=65000, beta=2, resolution=48000,
+                               span=65000, beta=2, resolution=100000,
                                mask=gdf)
         result = StePot.render(9, "equal_interval", output="Geodataframe")
         self.assertIsInstance(result, GeoDataFrame)
         self.assertEqual(len(result), 9)
 
-        gdf2 = GeoDataFrame.from_file('misc/nuts3_data.geojson').to_crs({"init": "epsg:4326"})
+        gdf2 = GeoDataFrame.from_file('misc/nuts3_data.geojson').to_crs({"init": "epsg:3035"})
         gdf2.loc[:, 'gdppps2008'] = gdf2['gdppps2008'].astype(object)
         gdf2.loc[15:20, 'gdppps2008'] = ""
         gdf2.loc[75:78, 'gdppps2008'] = ""
@@ -234,12 +234,19 @@ class TestSmoothStewart(unittest.TestCase):
         self.assertEqual(len(result), 9)
 
     def test_wrong_dtype_missing_values(self):
-        gdf = GeoDataFrame.from_file("misc/nuts3_data.geojson").to_crs({"init": "epsg:4326"})
+        gdf = GeoDataFrame.from_file("misc/nuts3_data.geojson")
         gdf.loc[12:18, "gdppps2008"] = np.NaN
         gdf.loc[25:35, "pop2008"] = np.NaN
         gdf.loc[0:len(gdf)-1, "pop2008"] = gdf["pop2008"].astype(str)
         StePot = SmoothStewart(gdf, "gdppps2008",
-                               span=65000, beta=2, resolution=60000,
+                               span=65000, beta=2, resolution=100000,
+                               mask="misc/nuts3_data.geojson")
+        result = StePot.render(9, "equal_interval", output="Geodataframe")
+        self.assertIsInstance(result, GeoDataFrame)
+        self.assertEqual(len(result), 9)
+
+        StePot = SmoothStewart(gdf, "gdppps2008", variable_name2="pop2008",
+                               span=65000, beta=2, resolution=100000,
                                mask="misc/nuts3_data.geojson")
         result = StePot.render(9, "equal_interval", output="Geodataframe")
         self.assertIsInstance(result, GeoDataFrame)
@@ -262,6 +269,21 @@ class TestSmoothStewart(unittest.TestCase):
         # Use maximal breaks discretisation method:
         result = StePot.render(9, "maximal_breaks", output="Geodataframe")
         self.assertIsInstance(result, GeoDataFrame)
+
+    def test_from_polygon_layer_no_crs(self):
+        gdf = GeoDataFrame.from_file("misc/nuts3_data.geojson")
+        gdf.crs = ''
+
+        # Convert the input layer to a polygon layer (instead of multipolygon):
+        gdf.geometry = gdf.geometry.union(gdf.geometry)
+        StePot = SmoothStewart(gdf, "gdppps2008",
+                               span=65000, beta=2, resolution=100000,
+                               mask="misc/nuts3_data.geojson")
+
+        # Use equal interval :
+        result = StePot.render(8, "equal_interval", output="Geodataframe")
+        self.assertIsInstance(result, GeoDataFrame)
+        self.assertEqual(len(result), 8)
 
     def test_errors(self):
         # Test with a wrong interaction function name :
