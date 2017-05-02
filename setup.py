@@ -22,7 +22,7 @@ setup(
     name='smoomapy',
     version=__version__,
     author="Matthieu Viry",
-    author_email="matthieu.viry@ums-riate.fr",
+    author_email="matthieu.viry@cnrs.fr",
     packages=find_packages(),
     description="Brings smoothed maps through python",
     long_description=long_desc,

@@ -92,10 +92,11 @@ class TestSmoothStewart(unittest.TestCase):
             "pop2008",
             span=65000,
             beta=2,
-            resolution=60000,
+            resolution=80000,
             user_defined_breaks=my_breaks,
             mask="misc/nuts3_data.geojson",
-            output="GeoDataFrame")
+            output="GeoDataFrame",
+            distGeo=False)
         self.assertIsInstance(res3, GeoDataFrame)
         #  ... so we should have the same class number than `res` :
         self.assertEqual(len(res3), len(res))
@@ -152,23 +153,30 @@ class TestSmoothStewart(unittest.TestCase):
         self.assertIsInstance(result, GeoDataFrame)
         self.assertEqual(len(result), 8)
 
-#    def test_distance_not_geo(self):
-#        # First whith one variable :
-#        StePot = SmoothStewart("misc/nuts3_data.geojson", "gdppps2008",
-#                               span=65000, beta=3, resolution=48000,
-#                               mask="misc/nuts3_data.geojson", distGeo=False)
-#        result = StePot.render(8, "equal_interval", output="Geodataframe")
-#        self.assertIsInstance(result, GeoDataFrame)
-#        self.assertEqual(len(result), 8)
-#
-#        # Then with two variables :
-#        StePot = SmoothStewart("misc/nuts3_data.geojson", "gdppps2008",
-#                               span=65000, beta=2, resolution=48000,
-#                               variable_name2="pop2008",
-#                               mask="misc/nuts3_data.geojson", distGeo=False)
-#        result = StePot.render(8, "equal_interval", output="Geodataframe")
-#        self.assertIsInstance(result, GeoDataFrame)
-#        self.assertEqual(len(result), 8)
+    def test_distance_not_geo(self):
+        # First whith one variable :
+        StePot = SmoothStewart("misc/nuts3_data.geojson",
+                               "gdppps2008",
+                               resolution=100000,
+                               span=65000, beta=3,
+                               mask="misc/nuts3_data.geojson",
+                               distGeo=False)
+        result = StePot.render(8, "equal_interval", output="Geodataframe")
+        self.assertIsInstance(result, GeoDataFrame)
+        self.assertEqual(len(result), 8)
+
+        # Then with two variables and a custom projection to use :
+        StePot = SmoothStewart("misc/nuts3_data.geojson",
+                               "gdppps2008",
+                               span=65000, beta=2,
+                               variable_name2="pop2008",
+                               mask="misc/nuts3_data.geojson",
+                               distGeo=False,
+                               projDistance={"init": "epsg:3035"})
+        result = StePot.render(8, "equal_interval", output="Geodataframe")
+        self.assertIsInstance(result, GeoDataFrame)
+        self.assertEqual(len(result), 8)
+        self.assertEqual(result.crs, {'init': 'epsg:3035'})
 
     def test_from_gdf_with_new_mask(self):
         gdf = GeoDataFrame.from_file("misc/nuts3_data.geojson")

@@ -48,7 +48,7 @@ def quick_stewart(input_geojson_points, variable_name, span,
     resolution : int, optionnal
         The resolution to use (in meters), if not set a default
         resolution will be used in order to make a grid containing around
-        9025 pts (default: None).
+        10000 pts (default: None).
     mask : str, optionnal
         Path to the file (Polygons only) to use as clipping mask,
         can also be a GeoDataFrame (default: None).
@@ -82,16 +82,15 @@ def quick_stewart(input_geojson_points, variable_name, span,
                                    span=12500, beta=3, typefct="pareto",
                                    output="GeoDataFrame")
     """
-#    distGeo = kwargs.get("distGeo", kwargs.get("longlat", True))
     StePot = SmoothStewart(input_geojson_points, variable_name, span,
-                           beta, typefct, resolution, None, mask)
+                           beta, typefct, resolution, None, mask, **kwargs)
 #                           None, mask, distGeo=distGeo)
     return StePot.render(nb_class=nb_class,
                          user_defined_breaks=user_defined_breaks,
                          output=output)
 
 
-def make_regular_points_with_no_res(bounds, nb_points=9025):
+def make_regular_points_with_no_res(bounds, nb_points=10000):
     """
     Return a regular grid of points within `bounds` with the specified
     number of points (or a close approximate value).
@@ -101,7 +100,7 @@ def make_regular_points_with_no_res(bounds, nb_points=9025):
     bounds : 4-floats tuple
         The bbox of the grid, as xmin, ymin, xmax, ymax.
     nb_points : int, optionnal
-        The desired number of points (default: 9025)
+        The desired number of points (default: 10000)
 
     Returns
     -------
@@ -127,6 +126,7 @@ def make_regular_points_with_no_res(bounds, nb_points=9025):
         np.linspace(minlat, maxlat, nb_y),
         (nb_y, nb_x)
         )
+
 
 def make_regular_points(bounds, resolution):
     """
@@ -207,12 +207,12 @@ def make_dist_mat(xy1, xy2, longlat=True):
     mat_dist : numpy.array
         The distance matrix between xy1 and xy2
     """
-#    if longlat:
-    return hav_dist(xy1[:, None], xy2)
-#    else:
-#        d0 = np.subtract.outer(xy1[:, 0], xy2[:, 0])
-#        d1 = np.subtract.outer(xy1[:, 1], xy2[:, 1])
-#        return np.hypot(d0, d1)
+    if longlat:
+        return hav_dist(xy1[:, None], xy2)
+    else:
+        d0 = np.subtract.outer(xy1[:, 0], xy2[:, 0])
+        d1 = np.subtract.outer(xy1[:, 1], xy2[:, 1])
+        return np.hypot(d0, d1)
 
 
 def hav_dist(locs1, locs2, k=np.pi/180):
@@ -311,7 +311,7 @@ class SmoothStewart:
     resolution : int, optionnal
         The resolution to use (in unit of the input file), if not set a default
         resolution will be used in order to make a grid containing around
-        9025 pts (default: None).
+        10000 pts (default: None).
     mask : str, optionnal
         Path to the file (Polygons only) to use as clipping mask (default: None).
     variable_name2 : str, optionnal
@@ -339,14 +339,19 @@ class SmoothStewart:
     def __init__(self, input_layer, variable_name, span, beta,
                  typefct='exponential', resolution=None,
                  variable_name2=None, mask=None, **kwargs):
-#        self.longlat = kwargs.get("distGeo", kwargs.get("longlat", True))
+        self.longlat = kwargs.get("distGeo", kwargs.get("longlat", True))
+        self.proj_to_use = {'init': 'epsg:4326'} if self.longlat \
+            else kwargs.get("projDistance", None) \
+            or ("""+proj=robin +lon_0=0 +x_0=0 +y_0=0 """
+                """+ellps=WGS84 +datum=WGS84 +units=m +no_defs""")
+
         self.gdf = input_layer.copy() if isinstance(input_layer, GeoDataFrame) \
             else GeoDataFrame.from_file(input_layer)
 
-        if self.gdf.crs and self.gdf.crs is not {'init': 'epsg:4326'}:
-            self.gdf.to_crs({'init': 'epsg:4326'}, inplace=True)
+        if self.gdf.crs and self.gdf.crs is not self.proj_to_use:
+            self.gdf.to_crs(self.proj_to_use, inplace=True)
         else:
-            self.gdf.crs = {'init': 'epsg:4326'}
+            self.gdf.crs = self.proj_to_use
 
         self.info = (
             'SmoothStewart - variable : {}{} ({} features)\n'
@@ -452,7 +457,7 @@ class SmoothStewart:
 
         # Compute the interaction matrix: 
         mat_dens = self._compute_interact_density(
-                make_dist_mat(knwpts_coords, unknownpts, longlat=True),
+                make_dist_mat(knwpts_coords, unknownpts, longlat=self.longlat),
                 typefct, beta, span)
 
         if not variable_name2:
@@ -510,11 +515,11 @@ class SmoothStewart:
     def check_mask(self):
         if len(set(self.mask.type)
                 .intersection({"Polygon", "MultiPolygon"})) > 0:
-            if self.mask.crs and self.mask.crs is not {'init': 'epsg:4326'}:
-                self.mask.to_crs({'init': 'epsg:4326'}, inplace=True)
+            if self.mask.crs and self.mask.crs is not self.proj_to_use:
+                self.mask.to_crs(self.proj_to_use, inplace=True)
             else:
-                self.mask.crs = {'init': 'epsg:4326'}
-    
+                self.mask.crs = self.proj_to_use
+
             self.use_mask = True
         else:
             self.use_mask = False
@@ -598,7 +603,7 @@ class SmoothStewart:
         levels[-1] = np.nanmax(pot)
         res = isopoly_to_gdf(collec_poly, levels=levels[1:], field_name="max")
 
-        res.crs = {'init': 'epsg:4326'}
+        res.crs = self.proj_to_use
         res["min"] = [np.nanmin(self.pot)] + res["max"][0:len(res)-1].tolist()
         res["center"] = (res["min"] + res["max"]) / 2
 
@@ -618,4 +623,7 @@ class SmoothStewart:
                      )
                  for geom in res.geometry]
 
-        return res.to_json().encode() if "geojson" in output.lower() else res
+        if "geojson" in output.lower():
+            return res.to_crs({"init": "epsg:4326"}).to_json().encode()
+        else:
+            return res
