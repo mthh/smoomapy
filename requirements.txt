@@ -1,4 +1,3 @@
 numpy >= 1.11.0
-gdal
 geopandas >= 0.1.1
 matplotlib >= 1.3.1
