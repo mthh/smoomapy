@@ -4,7 +4,7 @@
 Some helpers functions to try some (one dimension) data classification methods.
 """
 import numpy as np
-from operator import ge, le
+from operator import gt, lt
 from math import floor, log10
 
 
@@ -29,33 +29,31 @@ def _chain(*lists):
 
 class HeadTailBreaks:
     def __init__(self, values, direction="head"):
-        self.values = values if isinstance(values, np.ndarray) \
-            else np.array(values)
+        v = values if isinstance(values, np.ndarray) else np.array(values)
 
         if "head" in direction:
-            self.bins = [self.values.min()]
-            self.operator = ge
+            self.bins = [v.min()]
+            self.operator = gt
         elif "tail" in direction:
-            self.bins = [self.values.max()]
-            self.operator = le
+            self.bins = [v.max()]
+            self.operator = lt
         else:
             raise ValueError(
                 "Invalide direction argument (should be \"head\" or \"tail\")")
 
-        self.cut_head_tail_break(self.values)
+        mean = v.mean()
+        while True:
+            v = v[self.operator(v, mean)]
+            mean = v.mean()
+            self.bins.append(mean)
+            if len(v) < 2:
+                break
+
         self.nb_class = len(self.bins) - 1
 
         if "tail" in direction:
             self.bins = list(reversed(self.bins))
 
-        return None
-
-    def cut_head_tail_break(self, values):
-        mean = values.mean()
-        self.bins.append(mean)
-        if len(values) > 1:
-            return self.cut_head_tail_break(
-                values[self.operator(values, mean)])
         return None
 
 
