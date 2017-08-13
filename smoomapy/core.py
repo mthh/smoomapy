@@ -128,7 +128,7 @@ def make_regular_points_with_no_res(bounds, nb_points=10000):
         )
 
 
-def make_regular_points(bounds, resolution):
+def make_regular_points(bounds, resolution, longlat=True):
     """
     Return a regular grid of points within `bounds` with the specified
     resolution.
@@ -156,14 +156,23 @@ def make_regular_points(bounds, resolution):
     minlat -= offset_lat
     maxlat += offset_lat
 
-    height = hav_dist(
-            np.array([(maxlon + minlon) / 2, minlat]),
-            np.array([(maxlon + minlon) / 2, maxlat])
-            )
-    width = hav_dist(
-            np.array([minlon, (maxlat + minlat) / 2]),
-            np.array([maxlon, (maxlat + minlat) / 2])
-            )
+    if longlat:
+        height = hav_dist(
+                np.array([(maxlon + minlon) / 2, minlat]),
+                np.array([(maxlon + minlon) / 2, maxlat])
+                )
+        width = hav_dist(
+                np.array([minlon, (maxlat + minlat) / 2]),
+                np.array([maxlon, (maxlat + minlat) / 2])
+                )
+    else:
+        height = np.linalg.norm(
+            np.array([(maxlon + minlon) / 2, minlat])
+            - np.array([(maxlon + minlon) / 2, maxlat]))
+        width = np.linalg.norm(
+            np.array([minlon, (maxlat + minlat) / 2])
+            - np.array([maxlon, (maxlat + minlat) / 2]))
+
     nb_x = int(round(width / resolution))
     nb_y = int(round(height / resolution))
     if nb_y * 0.6 > nb_x:
@@ -176,15 +185,16 @@ def make_regular_points(bounds, resolution):
         (nb_y, nb_x)
         )
 
+
 def _compute_centroids(geometries):
-	res = []
-	for geom in geometries:
-		if hasattr(geom, '__len__'):
-			ix_biggest = np.argmax([g.area for g in geom])
-			res.append(geom[ix_biggest].centroid)
-		else:
-			res.append(geom.centroid)
-	return res
+    res = []
+    for geom in geometries:
+        if hasattr(geom, '__len__'):
+            ix_biggest = np.argmax([g.area for g in geom])
+            res.append(geom[ix_biggest].centroid)
+        else:
+            res.append(geom.centroid)
+    return res
 
 
 def make_dist_mat(xy1, xy2, longlat=True):
@@ -215,7 +225,7 @@ def make_dist_mat(xy1, xy2, longlat=True):
         return np.hypot(d0, d1)
 
 
-def hav_dist(locs1, locs2, k=np.pi/180):
+def hav_dist(locs1, locs2):
     """
     Return a distance matrix between two set of coordinates.
     Use geometric distance (default) or haversine distance (if longlat=True).
@@ -393,7 +403,6 @@ class SmoothStewart:
             self.gdf.loc[:, variable_name2] = \
                 self.gdf[variable_name2].astype(float)
             self.gdf = self.gdf[self.gdf[variable_name2].notnull()]
-            self.gdf = self.gdf[self.gdf[variable_name2] != 0]
 
         # Provide a new index if entries have been removed :
         self.gdf.index = range(len(self.gdf))
