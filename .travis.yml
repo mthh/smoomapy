@@ -21,7 +21,7 @@ before_install:
   - export PATH=$GDALINST/gdal-2.1.0/bin:$PATH
   - export LD_LIBRARY_PATH=$GDALINST/gdal-2.1.0/lib:$LD_LIBRARY_PATH
 install:
-  - pip install --upgrade setuptools pip coveralls
+  - pip install --upgrade coveralls
   - pip install -r requirements.txt
   - python setup.py install
 script:
