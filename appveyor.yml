@@ -47,7 +47,7 @@ install:
   - "%CMD_IN_ENV% pip install C:\\projects\\smoomapy\\appveyor\\Fiona-1.7.0-cp34-cp34m-win_amd64.whl"
   - "%CMD_IN_ENV% pip install C:\\projects\\smoomapy\\appveyor\\pyproj-1.9.5.1-cp34-cp34m-win_amd64.whl"
   - "%CMD_IN_ENV% pip install C:\\projects\\smoomapy\\appveyor\\scipy-0.18.1-cp34-cp34m-win_amd64.whl"
-  - "%CMD_IN_ENV% pip install --only-binary :all: shapely pytest"
+  - "%CMD_IN_ENV% pip install --only-binary :all: shapely"
   - "%CMD_IN_ENV% pip install -r requirements.txt"
 
 build_script:
