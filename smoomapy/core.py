@@ -8,24 +8,37 @@ More or less a python port of Stewart method from R SpatialPositon package
 """
 import numpy as np
 from matplotlib.pyplot import contourf
-from shapely.geometry import Polygon, MultiPolygon
+from shapely import speedups
 from shapely.ops import unary_union
+from shapely.geometry import Polygon, MultiPolygon
 from geopandas import GeoDataFrame
 from io import BytesIO, StringIO
 try:
     from jenkspy import jenks_breaks
-except:
-    jenks_breaks = None
+except: jenks_breaks = None
 from .helpers_classif import get_opt_nb_class, maximal_breaks, head_tail_breaks
 
+if speedups.available and not speedups.enabled: speedups.enable()
+
+
+def quick_idw(input_geojson_points, variable_name, power, nb_class,
+              nb_pts=10000, resolution=None, disc_func=None,
+              mask=None, user_defined_breaks=None,
+              variable_name2=None, output='GeoJSON', **kwargs):
+    idw = SmoothIdw(input_geojson_points, variable_name, power,
+                    nb_pts, resolution, variable_name2, mask, **kwargs)
+    return idw.render(nb_class=nb_class,
+                      disc_func=disc_func,
+                      user_defined_breaks=user_defined_breaks,
+                      output=output)
 
 def quick_stewart(input_geojson_points, variable_name, span,
-                  beta=2, typefct='exponential',
-                  nb_class=None, resolution=None, mask=None,
+                  beta=2, typefct='exponential',nb_class=None,
+                  nb_pts=10000, resolution=None, mask=None,
                   user_defined_breaks=None, variable_name2=None,
                   output="GeoJSON", **kwargs):
     """
-    Main function, acting as a one-shot wrapper around SmoothStewart object.
+    Function acting as a one-shot wrapper around SmoothStewart object.
     Read a file of point values and optionnaly a mask file,
     return the smoothed representation as GeoJSON or GeoDataFrame.
 
@@ -83,8 +96,8 @@ def quick_stewart(input_geojson_points, variable_name, span,
                                    output="GeoDataFrame")
     """
     StePot = SmoothStewart(input_geojson_points, variable_name, span,
-                           beta, typefct, resolution, None, mask, **kwargs)
-#                           None, mask, distGeo=distGeo)
+                           beta, typefct, nb_pts, resolution, variable_name2,
+                           mask, **kwargs)
     return StePot.render(nb_class=nb_class,
                          user_defined_breaks=user_defined_breaks,
                          output=output)
@@ -298,93 +311,46 @@ def isopoly_to_gdf(collec_poly, levels, field_name="levels"):
                         data=data,
                         columns=[field_name])
 
+class BaseSmooth:
+    def __repr__(self):
+        return "\n".join([self.info, self.info2, self.info3])
 
-class SmoothStewart:
-    """
-    Main object, allowing to create an instance with some required parameters
-    (span, beta, etc.) then render the contour polygons according to various
-    parameters (data classification, number of bins, output format, etc.)
+    def __str__(self):
+        return "\n".join([self.info, self.info2, self.info3])
 
-    Parameters
-    ----------
-    input_layer : str
-        Path to file to use as input (Points/Polygons) or GeoDataFrame object,
-        must contains a relevant numerical field.
-    variable_name : str
-        The name of the variable to use (numerical field only).
-    span : int
-        The span!
-    beta : float
-        The beta!
-    typefct : str, optionnal
-        The type of function in {"exponential", "pareto"} (default: "exponential").
-    resolution : int, optionnal
-        The resolution to use (in unit of the input file), if not set a default
-        resolution will be used in order to make a grid containing around
-        10000 pts (default: None).
-    mask : str, optionnal
-        Path to the file (Polygons only) to use as clipping mask (default: None).
-    variable_name2 : str, optionnal
-        The name of the 2nd variable to use (numerical field only); values
-        computed from this variable will be will be used as to divide
-        values computed from the first variable (default: None)
+    @property
+    def properties(self):
+        print("\n".join([self.info, self.info2, self.info3]))
 
-    Attributes
-    ----------
-    pot : numpy.ndarray
-        The computed potential values for each `unknownpts`.
-    unknownpts : numpy.ndarray
-        The coordinates for each unknown points, on which values
-        have been computed according to the choosen model (span, beta, etc.)
-
-    Methods
-    -------
-    render(nb_class=8, disc_func=None, user_defined_breaks=None,
-           output="GeoJSON", new_mask=False)
-        Render the contour polygon according to the choosen number of class and
-        the choosen classification method (or according to
-        `user_defined_breaks` which will overwrite these parameters)
-    """
-
-    def __init__(self, input_layer, variable_name, span, beta,
-                 typefct='exponential', resolution=None,
-                 variable_name2=None, mask=None, **kwargs):
-        self.longlat = kwargs.get("distGeo", kwargs.get("longlat", True))
-        self.proj_to_use = {'init': 'epsg:4326'} if self.longlat \
-            else kwargs.get("projDistance", None) \
-            or ("""+proj=robin +lon_0=0 +x_0=0 +y_0=0 """
-                """+ellps=WGS84 +datum=WGS84 +units=m +no_defs""")
-
-        self.gdf = input_layer.copy() if isinstance(input_layer, GeoDataFrame) \
-            else GeoDataFrame.from_file(input_layer)
-
-        if self.gdf.crs and self.gdf.crs is not self.proj_to_use:
-            self.gdf.to_crs(self.proj_to_use, inplace=True)
+    def open_mask(self, mask, input_layer):
+        # Read the mask according to its format:
+        if isinstance(mask, GeoDataFrame):
+            self.mask = mask
+        elif isinstance(mask, str) and isinstance(input_layer, str) \
+                and mask == input_layer:
+            self.mask = self.gdf.copy()
         else:
-            self.gdf.crs = self.proj_to_use
+            self.mask = GeoDataFrame.from_file(mask)
 
-        self.info = (
-            'SmoothStewart - variable : {}{} ({} features)\n'
-            'beta : {} - span : {} - function : {}'
-            ).format(variable_name,
-                     " / {}".format(variable_name2) if variable_name2 else "",
-                     len(self.gdf), beta, span, typefct)
-        if mask is not None:
-            if isinstance(mask, GeoDataFrame):
-                self.mask = mask
-            elif isinstance(mask, str) and isinstance(input_layer, str) \
-                    and mask == input_layer:
-                self.mask = self.gdf.copy()
+        self.check_mask()
+
+    def check_mask(self):
+        # Ensure the mask is made of Polygon/MultiPolygon:
+        if len(set(self.mask.type)
+                .intersection({"Polygon", "MultiPolygon"})) > 0:
+
+            # Use the same projection for the mask as for the input layer:
+            if self.mask.crs and self.mask.crs is not self.proj_to_use:
+                self.mask.to_crs(self.proj_to_use, inplace=True)
             else:
-                self.mask = GeoDataFrame.from_file(mask)
+                self.mask.crs = self.proj_to_use
 
-            self.check_mask()
+            self.use_mask = True
         else:
+            self.mask = None
             self.use_mask = False
 
-        self.info2 = ""
-        self.info3 = "Clipping mask: {}".format(self.use_mask)
-
+    def filter_missing_values(self, variable_name, variable_name2):
         # Convert the first value field to a numeric field if not already,
         # and dont take into account features with no value / NaN value
         if not self.gdf[variable_name].dtype in (float, int):
@@ -407,131 +373,37 @@ class SmoothStewart:
         # Provide a new index if entries have been removed :
         self.gdf.index = range(len(self.gdf))
 
-        # Calculate the value for each unknown points of the grid :
-        self.compute_pot(variable_name, span, beta,
-                         variable_name2=variable_name2,
-                         resolution=resolution,
-                         typefct=typefct)
-
-    def __repr__(self):
-        return "\n".join([self.info, self.info2, self.info3])
-
-    def __str__(self):
-        return "\n".join([self.info, self.info2, self.info3])
-
-    @property
-    def properties(self):
-        print("\n".join([self.info, self.info2, self.info3]))
-
-    @staticmethod
-    def _compute_interact_density(matdist, typefun, beta, span):
-        if 'pareto' in typefun:
-            alpha = (2.0 ** (1.0 / beta) - 1.0) / span
-            return (1 + alpha * matdist) ** (-beta)
-        elif 'exponential' in typefun:
-            alpha = np.log(2) / span ** beta
-            return np.exp(- alpha * matdist ** beta)
-        else:
-            raise ValueError('Bad interaction function argument: {}'
-                             .format(typefun))
-
-    def compute_pot(self, variable_name, span, beta,
-                    resolution=None, typefct="exponential",
-                    variable_name2=None):
-        knownpts = self.gdf
-
-        if self.use_mask:
-            bounds = self.mask.total_bounds
-        else:
-            bounds = knownpts.total_bounds
-
-        # Get the x and y axis of the grid:
-        self.XI, self.YI, self.shape = make_regular_points(bounds, resolution) \
-            if resolution else make_regular_points_with_no_res(bounds)
-
-        # Compute the coordinates of each point of the grid :
-        unknownpts = np.array([(x, y) for x in self.XI for y in self.YI])
-
-        # Use the centroid if the feature is a Polygon
-        #  or use the centroid of the largest Polygon for a MultiPolygon:
-        if all(i in ("Polygon", "Point") for i in knownpts.geom_type.values):
-            centroids = knownpts.geometry.centroid 
-        else:
-            centroids = _compute_centroids(knownpts.geometry)
-
-        # Coordinates of every known point:
-        knwpts_coords = np.array([
-            (g.coords.xy[0][0], g.coords.xy[1][0])
-            for g in centroids])
-
-        # Compute the interaction matrix: 
-        mat_dens = self._compute_interact_density(
-                make_dist_mat(knwpts_coords, unknownpts, longlat=self.longlat),
-                typefct, beta, span)
-
-        if not variable_name2:
-            self.pot = (
-                knownpts[variable_name].values[:, np.newaxis] * mat_dens
-                ).sum(axis=0).round(8)
-        else:
-            self.pot1 = (
-                knownpts[variable_name].values[:, np.newaxis] * mat_dens
-                ).sum(axis=0)
-            self.pot2 = (
-                knownpts[variable_name2].values[:, np.newaxis] * mat_dens
-                ).sum(axis=0)
-            self.pot = (np.true_divide(self.pot1, self.pot2)).round(8)
-
-            # Replace NaN values by -1.0 :
-            self.pot[np.argwhere(np.isnan(self.pot)).reshape(-1)] = -1.0
-            # Replace inf values by -1.0 :
-            self.pot[np.argwhere(np.isinf(self.pot)).reshape(-1)] = -1.0
-
-        self.info2 = ("unknown points : {} - interpolation grid shape : {}"
-                      ).format(len(unknownpts), self.shape)
-
     def define_levels(self, nb_class, disc_func):
-        pot = self.pot
-        _min = np.nanmin(pot)
+        zi = self.zi
+        _min = np.nanmin(zi)
 
         if not nb_class:
-            nb_class = int(get_opt_nb_class(len(pot)) - 2)
+#            nb_class = int(get_opt_nb_class(len(zi)) - 2)
+            nb_class = 8
         if not disc_func or "prog_geom" in disc_func:
             levels = [_min] + [
-                np.nanmax(pot) / i for i in range(1, nb_class + 1)][::-1]
+                np.nanmax(zi) / i for i in range(1, nb_class + 1)][::-1]
         elif "equal_interval" in disc_func:
-            _bin = np.nanmax(pot) / nb_class
+            _bin = np.nanmax(zi) / nb_class
             levels = [_min] + [_bin * i for i in range(1, nb_class+1)]
         elif "percentiles" in disc_func:
             levels = np.percentile(
-                np.concatenate((pot[pot.nonzero()], np.array([_min]))),
+                np.concatenate((zi[zi.nonzero()], np.array([_min]))),
                 np.linspace(0.0, 100.0, nb_class+1))
         elif "jenks" in disc_func:
             levels = list(jenks_breaks(np.concatenate(
-                ([_min], pot[pot.nonzero()])), nb_class))
+                ([_min], zi[zi.nonzero()])), nb_class))
             levels[0] = levels[0] - _min * 0.01
         elif "head_tail" in disc_func:
             levels = head_tail_breaks(np.concatenate(
-                ([_min], pot[pot.nonzero()])))
+                ([_min], zi[zi.nonzero()])))
         elif "maximal_breaks" in disc_func:
             levels = maximal_breaks(np.concatenate(
-                ([_min], pot[pot.nonzero()])), nb_class)
+                ([_min], zi[zi.nonzero()])), nb_class)
         else:
             raise ValueError
 
         return levels
-
-    def check_mask(self):
-        if len(set(self.mask.type)
-                .intersection({"Polygon", "MultiPolygon"})) > 0:
-            if self.mask.crs and self.mask.crs is not self.proj_to_use:
-                self.mask.to_crs(self.proj_to_use, inplace=True)
-            else:
-                self.mask.crs = self.proj_to_use
-
-            self.use_mask = True
-        else:
-            self.use_mask = False
 
     def render(self, nb_class=8, disc_func=None, user_defined_breaks=None,
                output="GeoJSON", new_mask=False):
@@ -565,26 +437,23 @@ class SmoothStewart:
             raise ValueError(
                 "Missing jenkspy package - could not use jenks breaks")
 
-        pot = self.pot
+        zi = self.zi
 
-        if new_mask is None:
+        if isinstance(new_mask, (type(False), type(None))):
             self.use_mask = False
             self.mask = None
-        elif isinstance(new_mask, GeoDataFrame):
-            self.use_mask = True
-            self.mask = new_mask
-            self.check_mask()
-        elif isinstance(new_mask, (str, BytesIO, StringIO)):
-            self.use_mask = True
-            self.mask = GeoDataFrame.from_file(new_mask)
-            self.check_mask()
+        else:
+            self.open_mask(new_mask, None)
 
+        # We want levels with the first break value as the minimum of the
+        # interpolated values and the last break value as the maximum of theses
+        # values:
         if user_defined_breaks:
             levels = user_defined_breaks
-            if levels[len(levels) - 1] < np.nanmax(pot):
-                levels = levels + [np.nanmax(pot)]
-            if levels[0] > np.nanmin(pot):
-                levels = [np.nanmin(pot)] + levels
+            if levels[len(levels) - 1] < np.nanmax(zi):
+                levels = levels + [np.nanmax(zi)]
+            if levels[0] > np.nanmin(zi):
+                levels = [np.nanmin(zi)] + levels
         else:
             levels = self.define_levels(nb_class, disc_func)
 
@@ -598,24 +467,30 @@ class SmoothStewart:
         try:
             collec_poly = contourf(
                 self.XI, self.YI,
-                self.pot.reshape(tuple(reversed(self.shape))).T,
+                zi.reshape(tuple(reversed(self.shape))).T,
                 levels,
-                vmax=abs(np.nanmax(self.pot)), vmin=-abs(np.nanmin(self.pot)))
+                vmax=abs(np.nanmax(zi)), vmin=-abs(np.nanmin(zi)))
         # Retry without setting the levels :
         except ValueError:
             collec_poly = contourf(
                 self.XI, self.YI,
-                self.pot.reshape(tuple(reversed(self.shape))).T,
-                vmax=abs(np.nanmax(self.pot)), vmin=-abs(np.nanmin(self.pot)))
+                zi.reshape(tuple(reversed(self.shape))).T,
+                vmax=abs(np.nanmax(zi)), vmin=-abs(np.nanmin(zi)))
 
+        # Fetch the levels returned by contourf:
         levels = collec_poly.levels
-        levels[-1] = np.nanmax(pot)
+        # Set the maximum value at the maximum value of the interpolated values:
+        levels[-1] = np.nanmax(zi)
+        # Transform contourf contours into a GeoDataFrame of (Multi)Polygons:
         res = isopoly_to_gdf(collec_poly, levels=levels[1:], field_name="max")
 
         res.crs = self.proj_to_use
-        res["min"] = [np.nanmin(self.pot)] + res["max"][0:len(res)-1].tolist()
+        # Set the min/max/center values of each class as properties
+        # if this contour layer:
+        res["min"] = [np.nanmin(zi)] + res["max"][0:len(res)-1].tolist()
         res["center"] = (res["min"] + res["max"]) / 2
 
+        # Compute the intersection between the contour layer and the mask layer:
         ix_max_ft = len(res) - 1
         if self.use_mask:
             res.loc[0:ix_max_ft, "geometry"] = res.geometry.buffer(
@@ -623,6 +498,7 @@ class SmoothStewart:
 
         # res.loc[0:ix_max_ft, "geometry"] = res.geometry.buffer(
         #     0).intersection(self.poly_max_extend.buffer(-0.1))
+
         # Repair geometries if necessary :
         if not all(t in ("MultiPolygon", "Polygon") for t in res.geom_type):
             res.loc[0:ix_max_ft, "geometry"] = \
@@ -636,3 +512,284 @@ class SmoothStewart:
             return res.to_crs({"init": "epsg:4326"}).to_json().encode()
         else:
             return res
+
+
+class SmoothStewart(BaseSmooth):
+    """
+    Main object, allowing to create an instance with some required parameters
+    (span, beta, etc.) then render the contour polygons according to various
+    parameters (data classification, number of bins, output format, etc.)
+
+    Parameters
+    ----------
+    input_layer : str
+        Path to file to use as input (Points/Polygons) or GeoDataFrame object,
+        must contains a relevant numerical field.
+    variable_name : str
+        The name of the variable to use (numerical field only).
+    span : int
+        The span!
+    beta : float
+        The beta!
+    typefct : str, optionnal
+        The type of function in {"exponential", "pareto"} (default: "exponential").
+    resolution_pts: int, optionnal
+        The resolution to use (in number of points). Can be overrided by the
+        'resolution' parameter if set.
+    resolution : int, optionnal
+        The resolution to use (in unit of the input file).
+    mask : str, optionnal
+        Path to the file (Polygons only) to use as clipping mask (default: None).
+    variable_name2 : str, optionnal
+        The name of the 2nd variable to use (numerical field only); values
+        computed from this variable will be will be used as to divide
+        values computed from the first variable (default: None)
+
+    Attributes
+    ----------
+    zi : numpy.ndarray
+        The computed potential values for each `unknownpts`.
+
+    Methods
+    -------
+    render(nb_class=8, disc_func=None, user_defined_breaks=None,
+           output="GeoJSON", new_mask=False)
+        Render the contour polygon according to the choosen number of class and
+        the choosen classification method (or according to
+        `user_defined_breaks` which will overwrite these parameters)
+    """
+
+    def __init__(self, input_layer, variable_name, span, beta,
+                 typefct='exponential', nb_pts=10000,
+                 resolution=None, variable_name2=None, mask=None, **kwargs):
+        self.longlat = kwargs.get("distGeo", kwargs.get("longlat", True))
+        self.proj_to_use = {'init': 'epsg:4326'} if self.longlat \
+            else kwargs.get("projDistance", None) \
+            or ("""+proj=robin +lon_0=0 +x_0=0 +y_0=0 """
+                """+ellps=WGS84 +datum=WGS84 +units=m +no_defs""")
+
+        self.gdf = input_layer.copy() if isinstance(input_layer, GeoDataFrame) \
+            else GeoDataFrame.from_file(input_layer)
+
+        if self.gdf.crs and self.gdf.crs is not self.proj_to_use:
+            self.gdf.to_crs(self.proj_to_use, inplace=True)
+        else:
+            self.gdf.crs = self.proj_to_use
+
+        self.info = (
+            'SmoothStewart - variable : {}{} ({} features)\n'
+            'beta : {} - span : {} - function : {}'
+            ).format(variable_name,
+                     " / {}".format(variable_name2) if variable_name2 else "",
+                     len(self.gdf), beta, span, typefct)
+
+        if mask is not None:
+            self.open_mask(mask, input_layer)
+        else:
+            self.use_mask = False
+
+        self.info2 = ""
+        self.info3 = "Clipping mask: {}".format(self.use_mask)
+
+        # Don't use features with missing values:
+        self.filter_missing_values(variable_name, variable_name2)
+
+        # Calculate the value for each unknown points of the grid:
+        self.compute_zi(variable_name, span, beta,
+                         variable_name2=variable_name2,
+                         nb_pts=nb_pts,
+                         resolution=resolution,
+                         typefct=typefct)
+
+    @staticmethod
+    def _compute_interact_density(matdist, typefun, beta, span):
+        if 'pareto' in typefun:
+            alpha = (2.0 ** (1.0 / beta) - 1.0) / span
+            return (1 + alpha * matdist) ** (-beta)
+        elif 'exponential' in typefun:
+            alpha = np.log(2) / span ** beta
+            return np.exp(- alpha * matdist ** beta)
+        else:
+            raise ValueError('Bad interaction function argument: {}'
+                             .format(typefun))
+
+    def compute_zi(self, variable_name, span, beta,
+                   nb_pts, resolution=None, typefct="exponential",
+                   variable_name2=None):
+        knownpts = self.gdf
+
+        if self.use_mask:
+            bounds = self.mask.total_bounds
+        else:
+            bounds = knownpts.total_bounds
+
+        # Get the x and y axis of the grid:
+        self.XI, self.YI, self.shape = make_regular_points(bounds, resolution) \
+            if resolution else make_regular_points_with_no_res(bounds, nb_pts)
+
+        # Compute the coordinates of each point of the grid :
+        unknownpts = np.array([(x, y) for x in self.XI for y in self.YI])
+
+        # Use the centroid if the feature is a Polygon
+        #  or use the centroid of the largest Polygon for a MultiPolygon:
+        if all(i in ("Polygon", "Point") for i in knownpts.geom_type.values):
+            centroids = knownpts.geometry.centroid 
+        else:
+            centroids = _compute_centroids(knownpts.geometry)
+
+        # Coordinates of every known point:
+        knwpts_coords = np.array([
+            (g.coords.xy[0][0], g.coords.xy[1][0])
+            for g in centroids])
+
+        # Compute the interaction matrix: 
+        mat_dens = self._compute_interact_density(
+                make_dist_mat(knwpts_coords, unknownpts, longlat=self.longlat),
+                typefct, beta, span)
+
+        if not variable_name2:
+            self.zi = (
+                knownpts[variable_name].values[:, np.newaxis] * mat_dens
+                ).sum(axis=0).round(8)
+        else:
+            self.zi1 = (
+                knownpts[variable_name].values[:, np.newaxis] * mat_dens
+                ).sum(axis=0)
+            self.zi2 = (
+                knownpts[variable_name2].values[:, np.newaxis] * mat_dens
+                ).sum(axis=0)
+            self.zi = (np.true_divide(self.zi1, self.zi2)).round(8)
+
+            # Replace NaN values by -1.0 :
+            self.zi[np.argwhere(np.isnan(self.zi)).reshape(-1)] = -1.0
+            # Replace inf values by -1.0 :
+            self.zi[np.argwhere(np.isinf(self.zi)).reshape(-1)] = -1.0
+
+        self.info2 = ("unknown points : {} - interpolation grid shape : {}"
+                      ).format(len(unknownpts), self.shape)
+
+class SmoothIdw(BaseSmooth):
+    """
+    Main object, allowing to create an instance with the appropriate power
+    parameter then render the contour polygons according to various parameters
+    (data classification, number of bins, output format, etc.)
+
+    Parameters
+    ----------
+    input_layer : str
+        Path to file to use as input (Points/Polygons) or GeoDataFrame object,
+        must contains a relevant numerical field.
+    variable_name : str
+        The name of the variable to use (numerical field only).
+    power : float
+        The power parameter of the IDW weighting function, as defined by Shepard.
+    resolution_pts: int, optionnal
+        The resolution to use (in number of points). Can be overrided by the
+        'resolution' parameter if set.
+    resolution : int, optionnal
+        The resolution to use (in unit of the input file).
+    mask : str, optionnal
+        Path to the file (Polygons only) to use as clipping mask (default: None).
+    variable_name2 : str, optionnal
+        The name of the 2nd variable to use (numerical field only); values
+        computed from this variable will be will be used as to divide
+        values computed from the first variable (default: None)
+
+    Attributes
+    ----------
+    zi : numpy.ndarray
+        The interpolated values (for each `unknownpts`).
+
+    Methods
+    -------
+    render(nb_class=8, disc_func=None, user_defined_breaks=None,
+           output="GeoJSON", new_mask=False)
+        Render the contour polygon according to the choosen number of class and
+        the choosen classification method (or according to
+        `user_defined_breaks` which will overwrite these parameters)
+    """
+
+    def __init__(self, input_layer, variable_name, power, nb_pts=10000,
+                 resolution=None, variable_name2=None, mask=None, **kwargs):
+        self.longlat = kwargs.get("distGeo", kwargs.get("longlat", True))
+        self.proj_to_use = {'init': 'epsg:4326'} if self.longlat \
+            else kwargs.get("projDistance", None) \
+            or ("""+proj=robin +lon_0=0 +x_0=0 +y_0=0 """
+                """+ellps=WGS84 +datum=WGS84 +units=m +no_defs""")
+
+        self.gdf = input_layer.copy() if isinstance(input_layer, GeoDataFrame) \
+            else GeoDataFrame.from_file(input_layer)
+
+        if self.gdf.crs and self.gdf.crs is not self.proj_to_use:
+            self.gdf.to_crs(self.proj_to_use, inplace=True)
+        else:
+            self.gdf.crs = self.proj_to_use
+
+        self.info = (
+            'SmoothIdw - variable : {}{} ({} features)\n'
+            ).format(variable_name,
+                     " / {}".format(variable_name2) if variable_name2 else "",
+                     len(self.gdf))
+        if mask is not None:
+            self.open_mask(mask, input_layer)
+        else:
+            self.use_mask = False
+
+        self.info2 = ""
+        self.info3 = "Clipping mask: {}".format(self.use_mask)
+
+        # Don't use features with missing values:
+        self.filter_missing_values(variable_name, variable_name2)
+
+        # Calculate the value for each unknown points of the grid:
+        self.compute_zi(variable_name,
+                        power,
+                        nb_pts=nb_pts,
+                        resolution=resolution,
+                        variable_name2=variable_name2)
+
+    def compute_zi(self, variable_name, power,
+                   nb_pts, resolution=None, variable_name2=None):
+        knownpts = self.gdf
+
+        if self.use_mask:
+            bounds = self.mask.total_bounds
+        else:
+            bounds = knownpts.total_bounds
+
+        # Get the x and y axis of the grid:
+        self.XI, self.YI, self.shape = make_regular_points(bounds, resolution) \
+            if resolution else make_regular_points_with_no_res(bounds, nb_pts)
+
+        # Compute the coordinates of each point of the grid :
+        unknownpts = np.array([(x, y) for x in self.XI for y in self.YI])
+
+        # Use the centroid if the feature is a Polygon
+        #  or use the centroid of the largest Polygon for a MultiPolygon:
+        if all(i in ("Polygon", "Point") for i in knownpts.geom_type.values):
+            centroids = knownpts.geometry.centroid 
+        else:
+            centroids = _compute_centroids(knownpts.geometry)
+
+        # Coordinates of every known point:
+        knwpts_coords = np.array([
+            (g.coords.xy[0][0], g.coords.xy[1][0])
+            for g in centroids])
+
+        mat_weights = 1 / np.power(
+            make_dist_mat(knwpts_coords, unknownpts, longlat=self.longlat),
+            power)
+
+        # Make weights sum to one
+        mat_weights /= mat_weights.sum(axis=0)
+    
+        # Multiply the weights for each interpolated point by all observed Z-values
+        self.zi = np.dot(mat_weights.T, knownpts[variable_name].values[:, np.newaxis])
+
+        # Replace NaN values by -1.0 :
+        self.zi[np.argwhere(np.isnan(self.zi)).reshape(-1)] = -1.0
+        # Replace inf values by -1.0 :
+        self.zi[np.argwhere(np.isinf(self.zi)).reshape(-1)] = -1.0
+
+        self.info2 = ("unknown points : {} - interpolation grid shape : {}"
+                      ).format(len(unknownpts), self.shape)

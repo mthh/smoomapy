@@ -6,11 +6,17 @@ Make smoothed maps in your python environnement
 
 |Build Status Travis| |Build Status Appveyor| |Version| |Coveralls|
 
-More or less a python port of *Stewart method* from R SpatialPositon
-package (https://github.com/Groupe-ElementR/SpatialPosition/).
+Takes an input of values located on Point features or on Polygon features (via their centroids)
+and compute interpolated values on a grid using one of the following method:
+Stewart Potentials or Inverse Distance Weighting.
+Grid resolution, distance function (euclidian or haversine) and projection are configurable.
 
-Allow to set a desired number of class and choose discretization method or
-directly set some custom breaks values.
+The resulting values are used to render layer of contours, according to a 
+classification method (quantiles, jenks) or breaks values defined by the user.
+
+This package had been partially developed for computing smoothed map in Magrit (http://magrit.cnrs.fr).
+The "Stewart Potential" part is more or less a python port of *Stewart method*
+from R SpatialPositon package (https://github.com/Groupe-ElementR/SpatialPosition/).
 
 Input/output can be a path to a geographic layer (GeoJSON, shp, etc.) or a GeoDataFrame.
 
@@ -30,8 +36,8 @@ documentation.
 Usage example:
 ~~~~~~~~~~~~~~
 
-One-shot functionnality
-^^^^^^^^^^^^^^^^^^^^^^^
+One-shot functionnality for Stewart potentials
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code:: python
 
@@ -45,8 +51,21 @@ One-shot functionnality
                                user_defined_breaks=None,
                                output="geojson")
 
-Object-oriented API, allowing to easily redraw contours with new breaks values
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+One-shot functionnality for IDW
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. code:: python
+
+    >>> result = quick_idw('nuts3_data.geojson',
+                           'pop1999',
+                           power=1,
+                           mask='nuts3_data.geojson',
+                           nb_class=10,
+                           user_defined_breaks=None,
+                           output="geojson")
+
+Object-oriented API for Stewart potentials
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code:: python
 
@@ -62,9 +81,22 @@ Object-oriented API, allowing to easily redraw contours with new breaks values
    :alt: png_example
 
 
-The long part of the computation is done during the initialization of
-``SmoothStewart`` instance (i.e. actually computing potentials). Some
-convenience methods allows to tweak and re-export the few last steps :
+Object-oriented API for IDW
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. code:: python
+
+    >>> idw = SmoothIdw('nuts3_data.geojson', 'pop2008',
+                        power=1, nb_pts=12000,
+                        mask='nuts3_data.geojson')
+    >>> res = idw.render(nb_class=8, disc_func="jenks",
+                            output="GeoDataFrame")
+    >>> res.plot(cmap="YlOrRd", linewidth=0.1)
+
+
+The long part of the computation is done during actually interpolating values.
+Using the Object-oriented API, you can compute new contours with the same interpolated values using the `render` method.
+
 
 **Allow to quickly redraw polygons with a new classification method**
 

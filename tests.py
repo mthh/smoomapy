@@ -3,11 +3,240 @@
 import unittest
 import numpy as np
 import random
+import sys
 from geopandas import GeoDataFrame
+from io import StringIO
 from smoomapy import (
-    quick_stewart, SmoothStewart,
+    quick_stewart, quick_idw, SmoothIdw, SmoothStewart,
     head_tail_breaks, maximal_breaks, get_opt_nb_class)
 from smoomapy.helpers_classif import _chain
+
+
+class TestSmoothIdw(unittest.TestCase):
+    def setUp(self):
+        pass
+
+    def test_one_shot_idw(self):
+        # Exports correctly to `bytes`:
+        res = quick_idw(
+            "misc/nuts3_data.geojson", "pop2008",
+            power=1, resolution=80000, nb_class=8,
+            disc_func='jenks', mask="misc/nuts3_data.geojson")
+        self.assertIsInstance(res, bytes)
+
+        # Exports correctly to `GeoDataFrame`
+        # and respects the choosen number of class:
+        res = quick_idw(
+            "misc/nuts3_data.geojson", "pop2008",
+            power=1, nb_pts=8000,
+            nb_class=8, disc_func="jenks",
+            mask="misc/nuts3_data.geojson",
+            output="GeoDataFrame")
+        self.assertIsInstance(res, GeoDataFrame)
+        self.assertEqual(len(res), 8)
+
+
+    def test_object_idw(self):
+        # Test the OO approach for building smoothed map with stewart potentials
+        idw = SmoothIdw("misc/nuts3_data.geojson", "pop2008",
+                        power=2,
+                        resolution=90000,
+                        mask="misc/nuts3_data.geojson")
+
+        # Test using percentiles :
+        result = idw.render(nb_class=10,
+                            disc_func="percentiles",
+                            output="geodataframe")
+        self.assertIsInstance(result, GeoDataFrame)
+        self.assertEqual(len(result), 10)
+
+        # Test using somes already choosed break values :
+        my_breaks = [0, 250000, 375000, 500000, 870000, 1850000, 4250000]
+        result = idw.render(
+            nb_class=48,  # bogus values as `nb_class` and
+            disc_func="foobar",  # ... disc_func should be overrided
+            user_defined_breaks=my_breaks,  # ... by the `user_defined_breaks` params
+            output="geodataframe")         # ... and this is what we are testing here
+
+        self.assertIsInstance(result, GeoDataFrame)
+        self.assertEqual(len(result), len(my_breaks) - 1)
+
+        # Assert these break values were actually used :
+        for wanted_break, obtained_break in zip(my_breaks[1:-1], result["max"][:-1]):
+            self.assertAlmostEqual(wanted_break, obtained_break)
+
+        # Test again using another discretization method : "head tail breaks"
+        # (should define automatically the number of class)
+        result = idw.render(nb_class=None,
+                               disc_func="head_tail",
+                               output="geodataframe")
+        self.assertIsInstance(result, GeoDataFrame)
+
+        # Test that the object has a nice representation :
+        a = str(idw)
+        b = repr(idw)
+        self.assertEqual(a, b)
+        self.assertIn("SmoothIdw - variable :", a)
+        self.assertIn("{} features".format(len(idw.gdf)), a)
+
+        sys.stdout = StringIO()
+        idw.properties
+        printed = sys.stdout.getvalue()
+        sys.stdout = sys.__stdout__
+        self.assertIn("SmoothIdw - variable :", printed)
+#    def test_object_idw_two_var(self):
+#        # Test the OO approach with two variables :
+#        idw = SmoothIdw("misc/nuts3_data.geojson", "gdppps2008",
+#                        power=0.7, resolution=80000,
+#                        variable_name2="pop2008",
+#                        mask="misc/nuts3_data.geojson")
+#        result = idw.render(8, "equal_interval", output="Geodataframe")
+#        self.assertIsInstance(result, GeoDataFrame)
+#        self.assertEqual(len(result), 8)
+
+    def test_distance_not_geo(self):
+        # First whith one variable :
+        idw = SmoothIdw("misc/nuts3_data.geojson",
+                        "gdppps2008",
+                        nb_pts=7200,
+                        power=3,
+                        mask="misc/nuts3_data.geojson",
+                        distGeo=False)
+        result = idw.render(8, "jenks", output="Geodataframe")
+        self.assertIsInstance(result, GeoDataFrame)
+        self.assertEqual(len(result), 8)
+
+#        # Then with two variables and a custom projection to use :
+#        idw = SmoothIdw("misc/nuts3_data.geojson",
+#                        "gdppps2008",
+#                        power=1.5,
+#                        variable_name2="pop2008",
+#                        mask="misc/nuts3_data.geojson",
+#                        distGeo=False,
+#                        projDistance={"init": "epsg:3035"})
+#        result = idw.render(8, "equal_interval", output="Geodataframe")
+#        self.assertIsInstance(result, GeoDataFrame)
+#        self.assertEqual(len(result), 8)
+#        self.assertEqual(result.crs, {'init': 'epsg:3035'})
+
+    def test_from_gdf_with_new_mask(self):
+        gdf = GeoDataFrame.from_file("misc/nuts3_data.geojson")
+
+        idw = SmoothIdw(gdf, "gdppps2008", power=1, nb_pts=2800, mask=None)
+        result = idw.render(6, "percentiles", output="Geodataframe")
+        self.assertIsInstance(result, GeoDataFrame)
+        self.assertEqual(len(result), 6)
+
+        # Finally, use a mask (from a file) :
+        result = idw.render(5, "percentiles",
+                            output="Geodataframe",
+                            new_mask="misc/nuts3_data.geojson")
+        self.assertIsInstance(result, GeoDataFrame)
+        self.assertEqual(idw.use_mask, True)
+        self.assertEqual(len(result), 5)
+
+        # Or from a GeoDataFrame :
+        gdf.geometry = gdf.geometry.buffer(100)
+
+        result = idw.render(6, "percentiles",
+                            output="Geodataframe",
+                            new_mask=gdf)
+        self.assertIsInstance(result, GeoDataFrame)
+        self.assertEqual(idw.use_mask, True)
+        self.assertEqual(len(result), 6)
+
+        # Nope, no mask :
+        result = idw.render(5, "percentiles",
+                            output="Geodataframe",
+                            new_mask=None)
+        self.assertIsInstance(result, GeoDataFrame)
+        self.assertEqual(idw.use_mask, False)
+        self.assertEqual(len(result), 5)
+
+        # Test that it skips the mask parameter if the layer provided as a mask
+        # is not a Polygon/MultiPolygon layer :
+        gdf_mask = gdf[1:50].copy()
+        gdf_mask.geometry = gdf_mask.geometry.centroid
+        result = idw.render(5, "percentiles",
+                            output="Geodataframe",
+                            new_mask=gdf_mask)
+        self.assertIsInstance(result, GeoDataFrame)
+        self.assertEqual(idw.use_mask, False)
+        self.assertEqual(len(result), 5)
+
+    def test_input_with_missing_values(self):
+        gdf = GeoDataFrame.from_file("misc/nuts3_data.geojson")
+        gdf.loc[12:18, "gdppps2008"] = np.NaN
+        idw = SmoothIdw(gdf, "gdppps2008", power=1, nb_pts=2600, mask=gdf)
+        result = idw.render(9, "jenks", output="Geodataframe")
+        self.assertIsInstance(result, GeoDataFrame)
+        self.assertEqual(len(result), 9)
+
+        gdf2 = GeoDataFrame.from_file('misc/nuts3_data.geojson').to_crs({"init": "epsg:3035"})
+        gdf2.loc[:, 'gdppps2008'] = gdf2['gdppps2008'].astype(object)
+        gdf2.loc[15:20, 'gdppps2008'] = ""
+        gdf2.loc[75:78, 'gdppps2008'] = ""
+        idw = SmoothIdw(gdf2, 'gdppps2008', power=1, nb_pts=1200, mask=gdf2)
+        result = idw.render(9, 'jenks', output="GeoDataFrame")
+        self.assertIsInstance(result, GeoDataFrame)
+        self.assertEqual(len(result), 9)
+
+    def test_wrong_dtype_missing_values(self):
+        gdf = GeoDataFrame.from_file("misc/nuts3_data.geojson")
+        gdf.loc[12:18, "gdppps2008"] = np.NaN
+        gdf.loc[25:35, "pop2008"] = np.NaN
+        gdf.loc[0:len(gdf)-1, "pop2008"] = gdf["pop2008"].astype(str)
+        idw = SmoothIdw(gdf, "gdppps2008", power=1, nb_pts=2600,
+                        mask="misc/nuts3_data.geojson")
+        result = idw.render(9, "jenks", output="Geodataframe")
+        self.assertIsInstance(result, GeoDataFrame)
+        self.assertEqual(len(result), 9)
+
+#        idw = SmoothIdw(gdf, "gdppps2008", variable_name2="pop2008",
+#                        power=1, nb_pts=1200, mask="misc/nuts3_data.geojson")
+#        result = idw.render(9, "equal_interval", output="Geodataframe")
+#        self.assertIsInstance(result, GeoDataFrame)
+#        self.assertEqual(len(result), 9)
+
+    def test_from_point_layer_and_maximal_breaks(self):
+        gdf = GeoDataFrame.from_file("misc/nuts3_data.geojson").to_crs({"init": "epsg:4326"})
+
+        # Convert the input layer to a point layer :
+        gdf.geometry = gdf.geometry.centroid
+        idw = SmoothIdw(gdf, "gdppps2008", power=1, nb_pts=7600,
+                        mask="misc/nuts3_data.geojson")
+
+        # Use equal interval :
+        result = idw.render(3, "equal_interval", output="Geodataframe")
+        self.assertIsInstance(result, GeoDataFrame)
+        self.assertEqual(len(result), 3)
+
+        # Use maximal breaks discretisation method:
+        result = idw.render(9, "maximal_breaks", output="Geodataframe")
+        self.assertIsInstance(result, GeoDataFrame)
+
+    def test_from_polygon_layer_no_crs(self):
+        gdf = GeoDataFrame.from_file("misc/nuts3_data.geojson")
+        gdf.crs = ''
+
+        # Convert the input layer to a polygon layer (instead of multipolygon):
+        gdf.geometry = gdf.geometry.union(gdf.geometry)
+        idw = SmoothIdw(gdf, "gdppps2008", power=1, nb_pts=2600,
+                        mask="misc/nuts3_data.geojson")
+
+        # Use equal interval :
+        result = idw.render(8, "jenks", output="Geodataframe")
+        self.assertIsInstance(result, GeoDataFrame)
+        self.assertEqual(len(result), 8)
+
+    def test_errors(self):
+        idw = SmoothIdw("misc/nuts3_data.geojson", "gdppps2008",
+                        power=2, nb_pts=1000)
+
+        # Test with a wrong discretization function name :
+        with self.assertRaises(ValueError):
+            idw.render(9, "foo", output="Geodataframe")
+
 
 
 class TestSmoothStewart(unittest.TestCase):
@@ -18,7 +247,7 @@ class TestSmoothStewart(unittest.TestCase):
         # Exports correctly to `bytes`:
         res = quick_stewart(
             "misc/nuts3_data.geojson", "pop2008",
-            span=65000, beta=2, resolution=60000, nb_class=8,
+            span=65000, beta=2, resolution=80000, nb_class=8,
             mask="misc/nuts3_data.geojson")
         self.assertIsInstance(res, bytes)
 
@@ -26,12 +255,13 @@ class TestSmoothStewart(unittest.TestCase):
         # and respects the choosen number of class:
         res = quick_stewart(
             "misc/nuts3_data.geojson", "pop2008",
-            span=65000, beta=2, resolution=60000, nb_class=8,
+            span=65000, beta=2, nb_pts=8000, nb_class=8,
             mask="misc/nuts3_data.geojson", output="GeoDataFrame")
         self.assertIsInstance(res, GeoDataFrame)
         self.assertEqual(len(res), 8)
 
-        # Test that it works without specifying neither `nb_class` nor `resolution`:
+        # Test that it works without specifying without `nb_pts`,
+        # `nb_class` and `resolution`:
         res = quick_stewart(
             "misc/nuts3_data.geojson", "pop2008",
             span=65000,
@@ -41,19 +271,19 @@ class TestSmoothStewart(unittest.TestCase):
         self.assertIsInstance(res, GeoDataFrame)
 
         # Test with user defined breaks values :
-        my_breaks = [0, 1697631, 3395263, 5092894, 6790526,
-                     8488157, 10185789, 11883420, 13581052]
+        my_breaks = [0, 197000, 1295000, 2093000, 3091000,
+                     5888000, 10186000, 13500000]
         res = quick_stewart(
             "misc/nuts3_data.geojson",
             "pop2008",
             span=65000,
             beta=2,
-            resolution=60000,
+            resolution=80000,
             user_defined_breaks=my_breaks,
             mask="misc/nuts3_data.geojson",
             output="GeoDataFrame")
         self.assertIsInstance(res, GeoDataFrame)
-        self.assertEqual(len(res), 8)
+        self.assertEqual(len(res), 7)
         # Assert these break values were actually used :
         for wanted_break, obtained_break in zip(my_breaks[1:-1], res["max"][:-1]):
             self.assertAlmostEqual(wanted_break, obtained_break)
@@ -63,15 +293,14 @@ class TestSmoothStewart(unittest.TestCase):
         #   two new class will be created,
         #   respectively between the minimum and the first break value
         #   and between the last break value and the maximum)
-        my_breaks = [1670000, 3395263, 5092894, 6790526,
-                     8488157, 10185789, 11883420, 12000000]
+        my_breaks = [1295000, 2093000, 3091000, 5888000, 10186000]
         nb_interval = len(my_breaks) - 1
         res2 = quick_stewart(
             "misc/nuts3_data.geojson",
             "pop2008",
             span=65000,
             beta=2,
-            resolution=60000,
+            resolution=80000,
             user_defined_breaks=my_breaks,
             mask="misc/nuts3_data.geojson",
             output="GeoDataFrame")
@@ -84,9 +313,10 @@ class TestSmoothStewart(unittest.TestCase):
         self.assertEqual(len(res2), nb_interval + 2)
 
         # Test with break values non-unique (likely due to the discretization choosed):
-        # The duplicate should be removed ...
-        my_breaks = [0, 0, 1697631, 3395263, 5092894, 6790526,
-                     8488157, 10185789, 11883420, 13581052]
+        # + Not correctly ordered values
+        # They should be reorderer and duplicates should be removed ...
+        my_breaks = [0, 0, 197000, 1295000, 3091000, 2093000,
+                     5888000, 10186000, 13500000]
         res3 = quick_stewart(
             "misc/nuts3_data.geojson",
             "pop2008",
@@ -104,7 +334,7 @@ class TestSmoothStewart(unittest.TestCase):
     def test_object_stewart(self):
         # Test the OO approach for building smoothed map with stewart potentials
         StePot = SmoothStewart("misc/nuts3_data.geojson", "pop2008",
-                               span=65000, beta=2, resolution=60000,
+                               span=65000, beta=2, resolution=90000,
                                mask="misc/nuts3_data.geojson")
 
         # Test using percentiles :
@@ -115,8 +345,8 @@ class TestSmoothStewart(unittest.TestCase):
         self.assertEqual(len(result), 10)
 
         # Test using somes already choosed break values :
-        my_breaks = [0, 197631, 1295263, 2092894, 3090526,
-                     5888157, 10185789, 11883420, 13581052]
+        my_breaks = [0, 197000, 1295000, 2093000, 3091000,
+                     5888000, 10186000, 12000000]
         result = StePot.render(
             nb_class=48,  # bogus values as `nb_class` and
             disc_func="foobar",  # ... disc_func should be overrided
@@ -124,7 +354,7 @@ class TestSmoothStewart(unittest.TestCase):
             output="geodataframe")         # ... and this is what we are testing here
 
         self.assertIsInstance(result, GeoDataFrame)
-        self.assertEqual(len(result), 8)
+        self.assertEqual(len(result), 7)
         # Assert these break values were actually used :
         for wanted_break, obtained_break in zip(my_breaks[1:-1], result["max"][:-1]):
             self.assertAlmostEqual(wanted_break, obtained_break)
@@ -169,6 +399,7 @@ class TestSmoothStewart(unittest.TestCase):
         StePot = SmoothStewart("misc/nuts3_data.geojson",
                                "gdppps2008",
                                span=65000, beta=2,
+                               resolution=80000,
                                variable_name2="pop2008",
                                mask="misc/nuts3_data.geojson",
                                distGeo=False,
@@ -183,7 +414,7 @@ class TestSmoothStewart(unittest.TestCase):
 
         # Let's use pareto function for this one :
         StePot = SmoothStewart(gdf, "gdppps2008", typefct="pareto",
-                               span=65000, beta=2.33, resolution=60000,
+                               span=65000, beta=2.33, resolution=80000,
                                mask=None)
         result = StePot.render(6, output="Geodataframe")
         self.assertIsInstance(result, GeoDataFrame)
@@ -236,7 +467,8 @@ class TestSmoothStewart(unittest.TestCase):
         gdf2.loc[:, 'gdppps2008'] = gdf2['gdppps2008'].astype(object)
         gdf2.loc[15:20, 'gdppps2008'] = ""
         gdf2.loc[75:78, 'gdppps2008'] = ""
-        StePot = SmoothStewart(gdf2, 'gdppps2008', span=65000, beta=2, resolution=48000, mask=gdf2)
+        StePot = SmoothStewart(gdf2, 'gdppps2008', span=65000, beta=2,
+                               resolution=80000, mask=gdf2)
         result = StePot.render(9, 'equal_interval', output="GeoDataFrame")
         self.assertIsInstance(result, GeoDataFrame)
         self.assertEqual(len(result), 9)
@@ -266,7 +498,7 @@ class TestSmoothStewart(unittest.TestCase):
         # Convert the input layer to a point layer :
         gdf.geometry = gdf.geometry.centroid
         StePot = SmoothStewart(gdf, "gdppps2008",
-                               span=65000, beta=2, resolution=60000,
+                               span=65000, beta=2, resolution=80000,
                                mask="misc/nuts3_data.geojson")
 
         # Use equal interval :
@@ -301,7 +533,7 @@ class TestSmoothStewart(unittest.TestCase):
                                    typefct="abcdefg")
 
         StePot = SmoothStewart("misc/nuts3_data.geojson", "gdppps2008",
-                               span=65000, beta=2, resolution=60000)
+                               span=65000, beta=2, resolution=90000)
 
         # Test with a wrong discretization function name :
         with self.assertRaises(ValueError):
