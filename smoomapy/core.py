@@ -15,7 +15,7 @@ from geopandas import GeoDataFrame
 try:
     from jenkspy import jenks_breaks
 except: jenks_breaks = None
-#from .helpers_classif import get_opt_nb_class, maximal_breaks, head_tail_breaks
+from .helpers_classif import maximal_breaks, head_tail_breaks
 
 if speedups.available and not speedups.enabled: speedups.enable()
 

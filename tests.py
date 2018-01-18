@@ -79,11 +79,12 @@ class TestSmoothIdw(unittest.TestCase):
         self.assertIn("SmoothIdw - variable :", a)
         self.assertIn("{} features".format(len(idw.gdf)), a)
 
-        sys.stdout = StringIO()
-        idw.properties
-        printed = sys.stdout.getvalue()
-        sys.stdout = sys.__stdout__
-        self.assertIn("SmoothIdw - variable :", printed)
+        if sys.version_info >= (3, 0):
+            sys.stdout = StringIO()
+            idw.properties
+            printed = sys.stdout.getvalue()
+            sys.stdout = sys.__stdout__
+            self.assertIn("SmoothIdw - variable :", printed)
 #    def test_object_idw_two_var(self):
 #        # Test the OO approach with two variables :
 #        idw = SmoothIdw("misc/nuts3_data.geojson", "gdppps2008",
