@@ -8,15 +8,15 @@ Make smoothed maps in your python environnement
 
 Takes an input of values located on Point features or on Polygon features (via their centroids)
 and compute interpolated values on a grid using one of the following method:
-Stewart Potentials or Inverse Distance Weighting.
-Grid resolution, distance function (euclidian or haversine) and projection are configurable.
+**Stewart Potentials** or **Inverse Distance Weighting**.
+*Grid resolution*, *distance function* (euclidian or haversine) and *projection* are configurable.
 
-The resulting values are used to render layer of contours, according to a 
-classification method (quantiles, jenks) or breaks values defined by the user.
+The resulting values are used to render a layer of contours, according to breaks values defined manually or using
+a classification method such as *quantiles* or *Jenks natural breaks*.
 
-This package had been partially developed for computing smoothed map in Magrit (http://magrit.cnrs.fr).
+This package had been partially developed for computing smoothed maps in **Magrit_**.
 The "Stewart Potential" part is more or less a python port of *Stewart method*
-from R SpatialPositon package (https://github.com/Groupe-ElementR/SpatialPosition/).
+from R **SpatialPositon_** package.
 
 Input/output can be a path to a geographic layer (GeoJSON, shp, etc.) or a GeoDataFrame.
 
@@ -30,8 +30,7 @@ Requires:
 Documentation on the method :
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Please refer to https://github.com/Groupe-ElementR/SpatialPosition/
-documentation.
+Please refer to https://github.com/Groupe-ElementR/SpatialPosition/ for documentation about **Stewarts potentials**.
 
 Usage example:
 ~~~~~~~~~~~~~~
@@ -94,15 +93,15 @@ Object-oriented API for IDW
     >>> res.plot(cmap="YlOrRd", linewidth=0.1)
 
 
+Usage hints:
+~~~~~~~~~~~~~~
+
 The long part of the computation is done during actually interpolating values.
-Using the Object-oriented API, you can compute new contours with the same interpolated values using the `render` method.
+Using the Object-oriented API, you can compute new contours with the same interpolated values using the `render` method
+(and using an other classification method within available ones: "equal\_interval", "prog\_geom", "jenks", "percentiles" and
+"head-tail-breaks").
 
-
-**Allow to quickly redraw polygons with a new classification method**
-
-Availables classification
-methods are: "equal\_interval", "prog\_geom", "jenks", "percentiles" and
-"head-tail-breaks"
+**Redraw polygons with a new classification method**
 
 .. code:: python
 
@@ -110,8 +109,8 @@ methods are: "equal\_interval", "prog\_geom", "jenks", "percentiles" and
                             disc_func="percentiles",
                             output="GeoDataFrame")
 
-**Allow to set custom break values (highly recommended after a first
-rendering or having take a look at the distibution):**
+**Redraw contours using custom break values
+(highly recommended after a first rendering or having take a look at the distibution):**
 
 .. code:: python
 
@@ -152,3 +151,7 @@ From github :
 
 .. |Coveralls| image:: https://coveralls.io/repos/github/mthh/smoomapy/badge.svg?branch=master
    :target: https://coveralls.io/github/mthh/smoomapy?branch=master
+
+.. _Magrit: http://magrit.cnrs.fr/
+
+.. _SpatialPositon: https://github.com/Groupe-ElementR/SpatialPosition/

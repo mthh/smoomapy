@@ -9,14 +9,13 @@ More or less a python port of Stewart method from R SpatialPositon package
 import numpy as np
 from matplotlib.pyplot import contourf
 from shapely import speedups
-from shapely.ops import unary_union
+from shapely.ops import unary_union, transform
 from shapely.geometry import Polygon, MultiPolygon
 from geopandas import GeoDataFrame
-from io import BytesIO, StringIO
 try:
     from jenkspy import jenks_breaks
 except: jenks_breaks = None
-from .helpers_classif import get_opt_nb_class, maximal_breaks, head_tail_breaks
+#from .helpers_classif import get_opt_nb_class, maximal_breaks, head_tail_breaks
 
 if speedups.available and not speedups.enabled: speedups.enable()
 
@@ -25,9 +24,16 @@ def quick_idw(input_geojson_points, variable_name, power, nb_class,
               nb_pts=10000, resolution=None, disc_func=None,
               mask=None, user_defined_breaks=None,
               variable_name2=None, output='GeoJSON', **kwargs):
-    idw = SmoothIdw(input_geojson_points, variable_name, power,
-                    nb_pts, resolution, variable_name2, mask, **kwargs)
-    return idw.render(nb_class=nb_class,
+
+    return SmoothIdw(input_geojson_points,
+                    variable_name,
+                    power,
+                    nb_pts,
+                    resolution,
+                    variable_name2,
+                    mask,
+                    **kwargs
+                    ).render(nb_class=nb_class,
                       disc_func=disc_func,
                       user_defined_breaks=user_defined_breaks,
                       output=output)
@@ -95,9 +101,16 @@ def quick_stewart(input_geojson_points, variable_name, span,
                                    span=12500, beta=3, typefct="pareto",
                                    output="GeoDataFrame")
     """
-    StePot = SmoothStewart(input_geojson_points, variable_name, span,
-                           beta, typefct, nb_pts, resolution, variable_name2,
-                           mask, **kwargs)
+    StePot = SmoothStewart(input_geojson_points,
+                           variable_name,
+                           span,
+                           beta,
+                           typefct,
+                           nb_pts,
+                           resolution,
+                           variable_name2,
+                           mask,
+                           **kwargs)
     return StePot.render(nb_class=nb_class,
                          user_defined_breaks=user_defined_breaks,
                          output=output)
@@ -255,8 +268,8 @@ def hav_dist(locs1, locs2):
     mat_dist : numpy.array
         The distance matrix between locs1 and locs2
     """
-    locs1 = np.radians(locs1)
-    locs2 = np.radians(locs2)
+#    locs1 = np.radians(locs1)
+#    locs2 = np.radians(locs2)
     cos_lat1 = np.cos(locs1[..., 0])
     cos_lat2 = np.cos(locs2[..., 0])
     cos_lat_d = np.cos(locs1[..., 0] - locs2[..., 0])
@@ -440,8 +453,9 @@ class BaseSmooth:
         zi = self.zi
 
         if isinstance(new_mask, (type(False), type(None))):
-            self.use_mask = False
-            self.mask = None
+            if not self.use_mask:
+                self.use_mask = False
+                self.mask = None
         else:
             self.open_mask(new_mask, None)
 
@@ -483,6 +497,12 @@ class BaseSmooth:
         levels[-1] = np.nanmax(zi)
         # Transform contourf contours into a GeoDataFrame of (Multi)Polygons:
         res = isopoly_to_gdf(collec_poly, levels=levels[1:], field_name="max")
+
+        if self.longlat:
+            def f(x, y, z=None):
+                return (x / 0.017453292519943295,
+                        y / 0.017453292519943295)
+            res.geometry = [transform(f, g) for g in res.geometry]
 
         res.crs = self.proj_to_use
         # Set the min/max/center values of each class as properties
@@ -623,6 +643,9 @@ class SmoothStewart(BaseSmooth):
         else:
             bounds = knownpts.total_bounds
 
+        if self.longlat:
+            bounds = list(map(lambda x : x * np.pi / 180, bounds))
+
         # Get the x and y axis of the grid:
         self.XI, self.YI, self.shape = make_regular_points(bounds, resolution) \
             if resolution else make_regular_points_with_no_res(bounds, nb_pts)
@@ -641,6 +664,9 @@ class SmoothStewart(BaseSmooth):
         knwpts_coords = np.array([
             (g.coords.xy[0][0], g.coords.xy[1][0])
             for g in centroids])
+
+        if self.longlat:
+            knwpts_coords *= np.pi / 180
 
         # Compute the interaction matrix: 
         mat_dens = self._compute_interact_density(
@@ -757,6 +783,9 @@ class SmoothIdw(BaseSmooth):
         else:
             bounds = knownpts.total_bounds
 
+        if self.longlat:
+            bounds = list(map(lambda x : x * np.pi / 180, bounds))
+
         # Get the x and y axis of the grid:
         self.XI, self.YI, self.shape = make_regular_points(bounds, resolution) \
             if resolution else make_regular_points_with_no_res(bounds, nb_pts)
@@ -775,6 +804,9 @@ class SmoothIdw(BaseSmooth):
         knwpts_coords = np.array([
             (g.coords.xy[0][0], g.coords.xy[1][0])
             for g in centroids])
+
+        if self.longlat:
+            knwpts_coords *= np.pi / 180
 
         mat_weights = 1 / np.power(
             make_dist_mat(knwpts_coords, unknownpts, longlat=self.longlat),
