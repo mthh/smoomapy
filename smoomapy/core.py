@@ -582,6 +582,7 @@ class SmoothStewart(BaseSmooth):
     def __init__(self, input_layer, variable_name, span, beta,
                  typefct='exponential', nb_pts=10000,
                  resolution=None, variable_name2=None, mask=None, **kwargs):
+        self.sizelimit = kwargs.get('sizelimit', float('infinity'))
         self.longlat = kwargs.get("distGeo", kwargs.get("longlat", True))
         self.proj_to_use = {'init': 'epsg:4326'} if self.longlat \
             else kwargs.get("projDistance", None) \
@@ -650,13 +651,17 @@ class SmoothStewart(BaseSmooth):
         self.XI, self.YI, self.shape = make_regular_points(bounds, resolution) \
             if resolution else make_regular_points_with_no_res(bounds, nb_pts)
 
+        # Verify that the size of the matrix doesn't exceed the sizelimit value if any:
+        if len(knownpts) * self.shape[0] * self.shape[1] > self.sizelimit:
+            raise ValueError('Too high resolution or to many input points')
+
         # Compute the coordinates of each point of the grid :
         unknownpts = np.array([(x, y) for x in self.XI for y in self.YI])
 
         # Use the centroid if the feature is a Polygon
         #  or use the centroid of the largest Polygon for a MultiPolygon:
         if all(i in ("Polygon", "Point") for i in knownpts.geom_type.values):
-            centroids = knownpts.geometry.centroid 
+            centroids = knownpts.geometry.centroid
         else:
             centroids = _compute_centroids(knownpts.geometry)
 
@@ -668,7 +673,7 @@ class SmoothStewart(BaseSmooth):
         if self.longlat:
             knwpts_coords *= np.pi / 180
 
-        # Compute the interaction matrix: 
+        # Compute the interaction matrix:
         mat_dens = self._compute_interact_density(
                 make_dist_mat(knwpts_coords, unknownpts, longlat=self.longlat),
                 typefct, beta, span)
@@ -796,7 +801,7 @@ class SmoothIdw(BaseSmooth):
         # Use the centroid if the feature is a Polygon
         #  or use the centroid of the largest Polygon for a MultiPolygon:
         if all(i in ("Polygon", "Point") for i in knownpts.geom_type.values):
-            centroids = knownpts.geometry.centroid 
+            centroids = knownpts.geometry.centroid
         else:
             centroids = _compute_centroids(knownpts.geometry)
 
@@ -814,7 +819,7 @@ class SmoothIdw(BaseSmooth):
 
         # Make weights sum to one
         mat_weights /= mat_weights.sum(axis=0)
-    
+
         # Multiply the weights for each interpolated point by all observed Z-values
         self.zi = np.dot(mat_weights.T, knownpts[variable_name].values[:, np.newaxis])
 
