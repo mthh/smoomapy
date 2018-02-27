@@ -236,7 +236,11 @@ class TestSmoothIdw(unittest.TestCase):
         with self.assertRaises(ValueError):
             idw.render(9, "foo", output="Geodataframe")
 
-
+        # Test with a sizelimit and a high number of points
+        # (the nuts3 layer contains 1448 features)
+        with self.assertRaises(ValueError):
+            idw = SmoothIdw("misc/nuts3_data.geojson", "gdppps2008",
+                        power=2, nb_pts=100000, sizelimit=10000000)
 
 class TestSmoothStewart(unittest.TestCase):
     def setUp(self):
@@ -535,6 +539,13 @@ class TestSmoothStewart(unittest.TestCase):
         with self.assertRaises(ValueError):
             StePot.render(9, "foo", output="Geodataframe")
 
+        # Test with a sizelimit and a high number of points
+        # (the nuts3 layer contains 1448 features)
+        with self.assertRaises(ValueError):
+            StePot = SmoothStewart(
+                    "misc/nuts3_data.geojson", "gdppps2008",
+                    span=65000, beta=2, typefct='pareto',
+                    nb_pts=100000, sizelimit=10000000)
 
 class TestHelpers(unittest.TestCase):
     def setUp(self):
