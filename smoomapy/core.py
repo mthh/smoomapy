@@ -24,6 +24,66 @@ def quick_idw(input_geojson_points, variable_name, power, nb_class,
               nb_pts=10000, resolution=None, disc_func=None,
               mask=None, user_defined_breaks=None,
               variable_name2=None, output='GeoJSON', **kwargs):
+    """
+    Function acting as a one-shot wrapper around SmoothIdw object.
+    Read a file of point values and optionnaly a mask file,
+    return the smoothed representation as GeoJSON or GeoDataFrame.
+
+    Parameters
+    ----------
+    input_geojson_points : str
+        Path to file to use as input (Points/Polygons) or GeoDataFrame object,
+        must contains a relevant numerical field.
+    variable_name : str
+        The name of the variable to use (numerical field only).
+    power : int or float
+        The power of the function.
+    nb_class : int, optionnal
+        The number of class, if unset will most likely be 8.
+        (default: None)
+    nb_pts: int, optionnal
+        The number of points to use for the underlying grid.
+        (default: 10000)
+    resolution : int, optionnal
+        The resolution to use (in meters), if not set a default
+        resolution will be used in order to make a grid containing around
+        10000 pts (default: None).
+    disc_func: str, optionnal
+        The name of the classification function to be used to decide on which
+        break values to use to create the contour layer.
+        (default: None)
+    mask : str, optionnal
+        Path to the file (Polygons only) to use as clipping mask,
+        can also be a GeoDataFrame (default: None).
+    user_defined_breaks : list or tuple, optionnal
+        A list of ordered break to use to construct the contours
+        (overrides `nb_class` and `disc_func` values if any, default: None).
+    variable_name2 : str, optionnal
+        The name of the 2nd variable to use (numerical field only); values
+        computed from this variable will be will be used as to divide
+        values computed from the first variable (default: None)
+    output : string, optionnal
+        The type of output expected (not case-sensitive)
+        in {"GeoJSON", "GeoDataFrame"} (default: "GeoJSON").
+
+    Returns
+    -------
+    smoothed_result : bytes or GeoDataFrame,
+        The result, dumped as GeoJSON (utf-8 encoded) or as a GeoDataFrame.
+
+
+    Examples
+    --------
+    Basic usage, output to raw geojson (bytes):
+
+    >>> result = quick_idw("some_file.geojson", "some_variable", power=2)
+
+    More options, returning a GeoDataFrame:
+
+    >>> smooth_gdf = quick_stewart("some_file.geojson", "some_variable",
+                                   nb_class=8, disc_func="percentiles",
+                                   output="GeoDataFrame")
+    """
 
     return SmoothIdw(input_geojson_points,
                     variable_name,
@@ -61,9 +121,12 @@ def quick_stewart(input_geojson_points, variable_name, span,
         The beta!
     typefct : str, optionnal
         The type of function in {"exponential", "pareto"} (default: "exponential").
-    nb_class : int, default None
+    nb_class : int, optionnal
         The number of class, if unset will most likely be 8
         (default: None)
+    nb_pts: int, optionnal
+        The number of points to use for the underlying grid.
+        (default: 10000)
     resolution : int, optionnal
         The resolution to use (in meters), if not set a default
         resolution will be used in order to make a grid containing around
@@ -100,20 +163,22 @@ def quick_stewart(input_geojson_points, variable_name, span,
     >>> smooth_gdf = quick_stewart("some_file.geojson", "some_variable",
                                    span=12500, beta=3, typefct="pareto",
                                    output="GeoDataFrame")
-    """
-    StePot = SmoothStewart(input_geojson_points,
-                           variable_name,
-                           span,
-                           beta,
-                           typefct,
-                           nb_pts,
-                           resolution,
-                           variable_name2,
-                           mask,
-                           **kwargs)
-    return StePot.render(nb_class=nb_class,
-                         user_defined_breaks=user_defined_breaks,
-                         output=output)
+    """ 
+    return SmoothStewart(
+            input_geojson_points,
+            variable_name,
+            span,
+            beta,
+            typefct,
+            nb_pts,
+            resolution,
+            variable_name2,
+            mask,
+            **kwargs
+            ).render(
+                nb_class=nb_class,
+                user_defined_breaks=user_defined_breaks,
+                output=output)
 
 
 def make_regular_points_with_no_res(bounds, nb_points=10000):
@@ -351,14 +416,13 @@ class BaseSmooth:
         # Ensure the mask is made of Polygon/MultiPolygon:
         if len(set(self.mask.type)
                 .intersection({"Polygon", "MultiPolygon"})) > 0:
-
             # Use the same projection for the mask as for the input layer:
             if self.mask.crs and self.mask.crs is not self.proj_to_use:
+                self.use_mask = True
                 self.mask.to_crs(self.proj_to_use, inplace=True)
             else:
+                self.use_mask = True
                 self.mask.crs = self.proj_to_use
-
-            self.use_mask = True
         else:
             self.mask = None
             self.use_mask = False
@@ -742,6 +806,7 @@ class SmoothIdw(BaseSmooth):
 
     def __init__(self, input_layer, variable_name, power, nb_pts=10000,
                  resolution=None, variable_name2=None, mask=None, **kwargs):
+        self.sizelimit = kwargs.get('sizelimit', float('infinity'))
         self.longlat = kwargs.get("distGeo", kwargs.get("longlat", True))
         self.proj_to_use = {'init': 'epsg:4326'} if self.longlat \
             else kwargs.get("projDistance", None) \
@@ -794,6 +859,10 @@ class SmoothIdw(BaseSmooth):
         # Get the x and y axis of the grid:
         self.XI, self.YI, self.shape = make_regular_points(bounds, resolution) \
             if resolution else make_regular_points_with_no_res(bounds, nb_pts)
+
+        # Verify that the size of the matrix doesn't exceed the sizelimit value if any:
+        if len(knownpts) * self.shape[0] * self.shape[1] > self.sizelimit:
+            raise ValueError('Too high resolution or to many input points')
 
         # Compute the coordinates of each point of the grid :
         unknownpts = np.array([(x, y) for x in self.XI for y in self.YI])
